@@ -1,5 +1,6 @@
 {
   "name": "dkg-swarm-webhooks",
+  "engines": { "node": ">=22.13.0" },
   "version": "1.0.0",
   "type": "module",
   "main": "server.mjs",

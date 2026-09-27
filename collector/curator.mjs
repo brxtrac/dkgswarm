@@ -107,6 +107,10 @@ function duplicateEvidence(matches) {
   }));
 }
 
+export function competingDrafts(matches, draftSubject) {
+  return matches.filter((item) => (item.s?.value || item.s) !== draftSubject);
+}
+
 async function duplicateInventory(url) {
   const normalized = canonicalUrl(url);
   const matches = [];
@@ -171,7 +175,8 @@ async function main() {
     const angle = field(`${ns}proposedAngle`);
     const text = term(comment?.o) || "";
     const isPush = /^collective[-_]?push[-_]/i.test(id);
-    if (!isPush && (!url || !publisher || typeof text !== "string" || text.length < 40 || duplicates.length)) throw new Error("community source, publisher, substantive text and unique URL required");
+    const draftSubject = `https://www.dkgswarm.com/ka/${id}`;
+    if (!isPush && (!url || !publisher || typeof text !== "string" || text.length < 40 || competingDrafts(duplicates, draftSubject).length)) throw new Error("community source, publisher, substantive text and unique URL required");
     const canonical = isPush ? validateCollectivePush({ name: id, url, postId, issuedAt, expiresAt, publisher: term(publisher?.o), angle, text }) : canonicalUrl(url);
     if (!isPush && !/^https:\/\/x\.com\/i\/status\/\d+$/.test(canonical)) throw new Error("community post requires X post URL");
     const name = `${isPush ? "curator-push-" : "curator-"}${id.toLowerCase()}`.slice(0, 80);

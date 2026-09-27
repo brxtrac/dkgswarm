@@ -2,6 +2,10 @@
   "name": "dkg-public-mcp",
   "version": "1.0.0",
   "description": "Public MCP for TRAC marketing DKG context graph",
+  "repository": "https://github.com/brxtrac/dkgswarm",
+  "homepage": "https://www.dkgswarm.com",
+  "bugs": "https://github.com/brxtrac/dkgswarm/issues",
+  "engines": { "node": ">=22.13.0" },
   "type": "module",
   "main": "server.mjs",
   "scripts": {

@@ -431,6 +431,7 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     const response = await fetch("https://api.twitter.com/1.1/guest/activate.json", {
       method: "POST",
       headers: { Authorization: `Bearer ${PUBLIC_BEARER}`, "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(12000),
     });
     const body = await response.json();
     if (!body.guest_token) throw new Error("no guest token");
@@ -453,6 +454,7 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
         ...extraHeaders,
       },
       body: method === "POST" ? JSON.stringify(params) : undefined,
+      signal: AbortSignal.timeout(12000),
     });
     if (!response.ok) {
       const error = new Error(`graphql ${response.status}`);
@@ -470,7 +472,7 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
   }
 
   async function fetchXPage(url) {
-    return fetch(url, { headers: { "User-Agent": "Mozilla/5.0", ...searchAuthHeaders() } });
+    return fetch(url, { headers: { "User-Agent": "Mozilla/5.0", ...searchAuthHeaders() }, signal: AbortSignal.timeout(12000) });
   }
 
   async function searchTransactionId(pathname, fresh = false) {
@@ -617,12 +619,21 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
         (post_id, account, kind, post_url, summary, created_at, is_reply, is_rt, observed_at, classification_json, raw_asset, insight_asset)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(post.post_id, post.account, kind, post.post_url, post.summary, post.created_at || "", post.isReply ? 1 : 0, post.isRt ? 1 : 0, observedAt, JSON.stringify(classification), assets.raw.name, assets.derived.name);
-      if (result.changes && queue) {
-        const insert = db.prepare("INSERT INTO deliveries (post_id, stage, next_attempt_at) VALUES (?, ?, ?)");
+      const old = result.changes ? null : db.prepare("SELECT classification_json FROM observations WHERE post_id = ?").get(post.post_id);
+      const current = old ? JSON.parse(old.classification_json) : null;
+      const priority = { official: 4, "approved-writer": 3, "swarm-member": 2, "ecosystem-account": 1, discovery: 0 };
+      const upgrade = current && (priority[classification.sourceTier] ?? 0) > (priority[current.sourceTier] ?? 0);
+      if (upgrade) db.prepare(`UPDATE observations SET account = ?, kind = ?, post_url = ?, summary = ?, created_at = ?,
+        is_reply = ?, is_rt = ?, classification_json = ? WHERE post_id = ?`).run(post.account, kind, post.post_url, post.summary,
+        post.created_at || "", post.isReply ? 1 : 0, post.isRt ? 1 : 0, JSON.stringify(classification), post.post_id);
+      if (queue && (result.changes || upgrade)) {
+        const insert = db.prepare("INSERT OR IGNORE INTO deliveries (post_id, stage, next_attempt_at) VALUES (?, ?, ?)");
         for (const stage of ["raw-dkg", "derived-dkg"]) insert.run(post.post_id, stage, observedAt);
+        if (upgrade) db.prepare(`UPDATE deliveries SET status = 'pending', next_attempt_at = ?, completed_at = NULL
+          WHERE post_id = ? AND stage = 'derived-dkg' AND status = 'skipped'`).run(observedAt, post.post_id);
       }
       db.exec("COMMIT");
-      return result.changes > 0;
+      return result.changes > 0 || Boolean(upgrade);
     } catch (error) {
       db.exec("ROLLBACK");
       throw error;
@@ -636,6 +647,7 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ contextGraphId: graphId, name: asset.name, quads: asset.quads, finalize: false, alsoShareSwm: false }),
+      signal: AbortSignal.timeout(20000),
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -659,7 +671,7 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     if (!token) throw new Error("no dkg token");
     const url = new URL(`${dkgApi}/api/knowledge-assets/${encodeURIComponent(name)}`);
     url.searchParams.set("contextGraphId", graphId);
-    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(12000) });
     if (response.status === 404) return false;
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
@@ -676,6 +688,7 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
         view,
         sparql: `ASK { GRAPH <${descriptor.assertionGraph}> { ?s ?p ?o } }`,
       }),
+      signal: AbortSignal.timeout(12000),
     });
     const queryBody = await query.json().catch(() => ({}));
     if (!query.ok) throw new Error(`DKG ${query.status}: ${queryBody.error || queryBody.message || "asset content lookup failed"}`);
@@ -864,7 +877,7 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
       const key = normalizeHandle(post.account).toLowerCase();
       const kind = supportAccounts().map((item) => item.toLowerCase()).includes(key)
         && !accounts.map((item) => item.toLowerCase()).includes(key) ? "support" : "official";
-      const classification = classifyPost(post, accounts);
+      const classification = classifyPost(post, accounts, { sourceTier: sourceTier(post.account) });
       const inserted = persist(post, kind, classification, classification.relevant);
       await processQueue();
       return { inserted, classification, post_id: post.post_id };

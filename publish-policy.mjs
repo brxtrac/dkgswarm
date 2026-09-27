@@ -19,23 +19,39 @@ const request = async (url, body) => {
   const response = await fetch(`${api}${url}`, {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(25000),
   });
   if (!response.ok) throw new Error(`DKG ${response.status}: ${(await response.text()).slice(0, 300)}`);
   return response.json();
 };
-await request("/api/knowledge-assets", {
-  contextGraphId: "trac-marketing", name, finalize: false, alsoShareSwm: false,
-  quads: [
-    { subject, predicate: "http://www.w3.org/2000/01/rdf-schema#label", object: lit(name) },
-    { subject, predicate: "http://www.w3.org/2000/01/rdf-schema#comment", object: lit(JSON.stringify(policy)) },
-  ],
-});
-await request(`/api/knowledge-assets/${name}/swm/share`, { contextGraphId: "trac-marketing" });
-const confirmed = await request("/api/query", {
+const readShared = () => request("/api/query", {
   contextGraphId: "trac-marketing", view: "shared-working-memory",
   sparql: `SELECT ?o WHERE { <${subject}> <http://www.w3.org/2000/01/rdf-schema#comment> ?o } LIMIT 2`,
 });
 const sha256 = policyDigest(policy);
+let confirmed = await readShared();
+if (!confirmed?.result?.bindings?.length) {
+  try {
+    await request("/api/knowledge-assets", {
+      contextGraphId: "trac-marketing", name, finalize: false, alsoShareSwm: false,
+      quads: [
+        { subject, predicate: "http://www.w3.org/2000/01/rdf-schema#label", object: lit(name) },
+        { subject, predicate: "http://www.w3.org/2000/01/rdf-schema#comment", object: lit(JSON.stringify(policy)) },
+      ],
+    });
+  } catch (error) {
+    // A timed-out create may have succeeded. Only reuse exact matching WM content.
+    const wm = await request("/api/query", { contextGraphId: "trac-marketing", view: "working-memory",
+      sparql: `SELECT ?o WHERE { <${subject}> <http://www.w3.org/2000/01/rdf-schema#comment> ?o } LIMIT 2` });
+    verifyPolicyBindings(wm?.result?.bindings, { version: policy.version, sha256, contextGraphId: "trac-marketing" });
+  }
+  try { await request(`/api/knowledge-assets/${name}/swm/share`, { contextGraphId: "trac-marketing" }); }
+  catch (error) {
+    const shared = await readShared();
+    verifyPolicyBindings(shared?.result?.bindings, { version: policy.version, sha256, contextGraphId: "trac-marketing" });
+  }
+  confirmed = await readShared();
+}
 verifyPolicyBindings(confirmed?.result?.bindings, { version: policy.version, sha256, contextGraphId: "trac-marketing" });
 const temp = `${pointer}.${process.pid}.tmp`;
 fs.writeFileSync(temp, JSON.stringify({ version: policy.version, sha256 }) + "\n", { mode: 0o600 });

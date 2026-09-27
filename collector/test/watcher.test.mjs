@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { buildAssets, classifyPost, createWatcher, extractOperationId, extractScriptUrls, hasQueryContent, isSharedAsset, isWorkingAsset, normalizeXHandle, openStore, shouldNotifyPost, shouldSkipPost } from "../watcher.mjs";
 
 test("X handles are required, validated, and normalized", () => {
@@ -56,6 +57,39 @@ test("watcher reads additional accounts dynamically and deduplicates by case", (
     else process.env[key] = value;
   }
   fs.rmSync(directory, { recursive: true, force: true });
+});
+
+test("approved writer upgrades previously irrelevant discovery and queues missing deliveries", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "x-watcher-upgrade-"));
+  const previous = { WATCH_DB: process.env.WATCH_DB, WATCH_SEEN: process.env.WATCH_SEEN,
+    WATCH_DETECTIONS: process.env.WATCH_DETECTIONS, WATCH_TRUSTED_ACCOUNTS: process.env.WATCH_TRUSTED_ACCOUNTS };
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => { throw new Error("test DKG unavailable"); };
+    process.env.WATCH_DB = path.join(dir, "watcher.sqlite");
+    process.env.WATCH_SEEN = path.join(dir, "missing.json");
+    process.env.WATCH_DETECTIONS = path.join(dir, "missing.jsonl");
+    process.env.WATCH_TRUSTED_ACCOUNTS = "AgentOne";
+    const watcher = createWatcher({ fanout: async () => ({}) });
+    const db = new DatabaseSync(process.env.WATCH_DB);
+    const post = { post_id: "123456789", account: "@AgentOne", post_url: "https://x.com/AgentOne/status/123456789",
+      summary: "Normal public update unrelated to searched keyword", created_at: "2026-09-27" };
+    db.prepare(`INSERT INTO observations (post_id, account, kind, post_url, summary, created_at, observed_at, classification_json)
+      VALUES (?, ?, 'search-tier-1', ?, ?, ?, ?, ?)`).run(post.post_id, post.account, post.post_url, post.summary,
+      post.created_at, new Date().toISOString(), JSON.stringify(classifyPost(post, [], { sourceTier: "discovery" })));
+    db.prepare("INSERT INTO seeded_accounts (account, seeded_at) VALUES (?, ?)").run("agentone", new Date().toISOString());
+    const result = await watcher.test(post);
+    assert.equal(result.inserted, true);
+    assert.equal(JSON.parse(db.prepare("SELECT classification_json FROM observations WHERE post_id = ?").get(post.post_id).classification_json).sourceTier, "approved-writer");
+    assert.equal(db.prepare("SELECT COUNT(*) AS count FROM deliveries WHERE post_id = ?").get(post.post_id).count, 2);
+    db.close();
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("official posts are primary-source ecosystem observations", () => {

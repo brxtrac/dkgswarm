@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: node --check server.mjs
+      - run: node --check publish-policy.mjs
+      - run: npm ci
+        working-directory: collector
+      - run: npm test
+        working-directory: collector
+      - run: node --check watcher.mjs && node --check curator.mjs
+        working-directory: collector

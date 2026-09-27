@@ -19,6 +19,7 @@ import { createStore, grokClient, randomToken, resolveRefreshScopes, validateAut
 import { enqueueCuratorDraft, triggerCurator } from "./curator-intake.mjs";
 import { createActivity } from "./activity.mjs";
 import { verifyPolicyBindings } from "./policy-integrity.mjs";
+import { assertReadSparql } from "./query-guard.mjs";
 import {
   SOCIAL_WORKER_INSTRUCTIONS,
   SOCIAL_WORKER_PROFILE,
@@ -47,6 +48,20 @@ const activity = createActivity();
 const POLICY_PREFIX = "swarm-policy-v";
 const POLICY_URI_PREFIX = `${PUBLIC_URL}/ka/${POLICY_PREFIX}`;
 const POLICY_CURRENT_PATH = process.env.DKG_MCP_POLICY_CURRENT || "/root/dkg-public-mcp/policy-current.json";
+const queryBuckets = new Map();
+let activeQueries = 0;
+function reserveQuery() {
+  const identity = authStore.getStore()?.family || "";
+  const now = Date.now();
+  const bucket = queryBuckets.get(identity);
+  const next = !bucket || bucket.until <= now ? { count: 0, until: now + 60000 } : bucket;
+  if (next.count >= 12 || activeQueries >= 8) throw new Error("Query capacity exceeded; retry later");
+  next.count++;
+  queryBuckets.set(identity, next);
+  activeQueries++;
+  if (queryBuckets.size > 10000) for (const [key, value] of queryBuckets) if (value.until <= now) queryBuckets.delete(key);
+  return () => { activeQueries--; };
+}
 
 function json(data) {
   return { content: [{ type: "text", text: JSON.stringify(data) }] };
@@ -96,18 +111,6 @@ async function dkgFetch(pathname, { method = "GET", body, timeoutMs = 25000 } = 
   } finally {
     clearTimeout(t);
   }
-}
-
-function assertReadSparql(sparql) {
-  const s = String(sparql || "").trim();
-  if (!s) throw new Error("sparql is required");
-  if (!/^(PREFIX\s+\S+\s*<[^>]+>\s*)*(SELECT|ASK|CONSTRUCT|DESCRIBE)\b/i.test(s)) {
-    throw new Error("Only SELECT, ASK, CONSTRUCT, or DESCRIBE queries are allowed");
-  }
-  if (/\b(INSERT|DELETE|LOAD|CLEAR|DROP|CREATE|MOVE|COPY|ADD|UPDATE)\b/i.test(s)) {
-    throw new Error("SPARQL updates are not allowed on this connector");
-  }
-  return s;
 }
 
 function requireWrite() {
@@ -235,7 +238,7 @@ function getServer() {
     {
       description: "Read-only SPARQL against the TRAC marketing context graph. Public readers query Shared Working Memory. Writers may set view=working-memory for drafts. Verifiable Memory / on-chain publish is not available.",
       inputSchema: {
-        sparql: z.string().describe("SELECT/ASK/CONSTRUCT/DESCRIBE only"),
+        sparql: z.string().max(4096).describe("SELECT with LIMIT 1-100 or ASK only"),
         view: z
           .enum(["shared-working-memory", "working-memory"])
           .optional()
@@ -247,12 +250,15 @@ function getServer() {
       const q = assertReadSparql(sparql);
       let v = view || "shared-working-memory";
       if (v === "working-memory") requireWrite();
-      const result = await dkgFetch("/api/query", {
-        method: "POST",
-        body: { sparql: q, contextGraphId: GRAPH_ID, view: v },
-        timeoutMs: 45000,
-      });
-      return json({ contextGraphId: GRAPH_ID, view: v, result });
+      const release = reserveQuery();
+      try {
+        const result = await dkgFetch("/api/query", {
+          method: "POST",
+          body: { sparql: q, contextGraphId: GRAPH_ID, view: v },
+          timeoutMs: 10000,
+        });
+        return json({ contextGraphId: GRAPH_ID, view: v, result });
+      } finally { release(); }
     }
   );
 
@@ -730,7 +736,7 @@ app.use("/mcp", async (req, res, next) => {
         JSON.stringify({ clientId: auth.clientId, method, status: res.statusCode, durationMs: Date.now() - startedAt })
       );
     });
-    authStore.run({ scopes: auth.scopes || [], token: got }, () => next());
+    authStore.run({ scopes: auth.scopes || [], token: got, family: auth.tokenFamilyId }, () => next());
   } catch {
     res.set("WWW-Authenticate", www);
     res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Unauthorized" }, id: null });

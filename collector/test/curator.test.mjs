@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { askTrue, canonicalUrl, validateCollectivePush } from "../curator.mjs";
+import { askTrue, canonicalUrl, competingDrafts, validateCollectivePush } from "../curator.mjs";
+
+test("community source draft is not its own duplicate, while other drafts still block promotion", () => {
+  const source = "https://www.dkgswarm.com/ka/community-post-1";
+  const competing = "https://www.dkgswarm.com/ka/community-post-2";
+  assert.deepEqual(competingDrafts([{ s: { value: source }, view: "working-memory" }], source), []);
+  assert.deepEqual(competingDrafts([{ s: { value: source } }, { s: competing, view: "shared-working-memory" }], source),
+    [{ s: competing, view: "shared-working-memory" }]);
+});
 
 test("canonical URL strips tracking and normalizes X post identity", () => {
   assert.equal(canonicalUrl("http://www.example.org/story/?utm_source=x&b=2&a=1#part"), "https://example.org/story?a=1&b=2");

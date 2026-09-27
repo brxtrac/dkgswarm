@@ -51,11 +51,6 @@ const ACTIONS = new Set([
   "custom",
 ]);
 
-if (!SECRET || SECRET.length < 16) {
-  console.error("SWARM_KEY_SECRET required");
-  process.exit(1);
-}
-
 function keyBuf() {
   return crypto.scryptSync(SECRET, "dkgswarm-webhooks-v1", 32);
 }
