@@ -1,0 +1,36 @@
+# Dependencies and generated output
+node_modules/
+coverage/
+dist/
+build/
+*.log
+*.tmp
+*.bak
+*.bak-*
+
+# Private runtime state (at any depth)
+data/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.token
+*.pem
+*.key
+*.p12
+*.pfx
+auth.json
+oauth.json
+writer-codes.json
+writer-codes.json.*
+policy-current.json
+
+# Local environment and OS/editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*:Zone.Identifier
+.idea/
+.vscode/

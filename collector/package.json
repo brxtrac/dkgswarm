@@ -1,0 +1,14 @@
+{
+  "name": "dkg-swarm-webhooks",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "linkedom": "^0.18.13",
+    "x-client-transaction-id": "^0.3.1"
+  }
+}

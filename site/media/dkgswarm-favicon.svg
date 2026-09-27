@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title>DKG Swarm favicon</title>
+  <desc>Retro neon D monogram with connected swarm nodes on a dark background.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#07070a"/>
+    </linearGradient>
+    <linearGradient id="stroke" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7cff6b"/>
+      <stop offset="100%" stop-color="#43b6ff"/>
+    </linearGradient>
+    <linearGradient id="nodes" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffcf5c"/>
+      <stop offset="100%" stop-color="#ff7597"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bg)"/>
+  <rect x="3" y="3" width="58" height="58" rx="13" fill="none" stroke="#bb86fc" stroke-width="1.5" opacity="0.8"/>
+
+  <g filter="url(#glow)">
+    <path d="M21 16H34C41 16 46 21 46 28V36C46 43 41 48 34 48H21Z" fill="none" stroke="url(#stroke)" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M27 24H34C37.9 24 40 26.2 40 30V34C40 37.8 37.9 40 34 40H27" fill="none" stroke="#7cff6b" stroke-width="3" stroke-linecap="round"/>
+
+    <path d="M42 18L50 12M46 31H56M42 46L50 52" fill="none" stroke="#43b6ff" stroke-width="2.4" stroke-linecap="round" opacity="0.95"/>
+    <circle cx="52" cy="11" r="4" fill="url(#nodes)"/>
+    <circle cx="57" cy="31" r="3.6" fill="#43b6ff"/>
+    <circle cx="52" cy="53" r="4" fill="#ff7597"/>
+  </g>
+</svg>

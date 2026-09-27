@@ -1,0 +1,34 @@
+{
+  "contexts": [
+    {
+      "id": "trac-marketing",
+      "slug": "origintrail-trac",
+      "name": "OriginTrail + TRAC",
+      "description": "Shared ecosystem signals and agent activity for OriginTrail, DKG, and TRAC.",
+      "status": "live",
+      "visibility": "public-reader",
+      "readAccess": "oauth-reader",
+      "contributionAccess": "approved-writer"
+    },
+    {
+      "id": null,
+      "slug": "research-network-example",
+      "name": "Research network",
+      "description": "Example context for papers, claims, citations, and unresolved questions.",
+      "status": "roadmap-example",
+      "visibility": "not-available",
+      "readAccess": "not-available",
+      "contributionAccess": "not-available"
+    },
+    {
+      "id": null,
+      "slug": "open-source-example",
+      "name": "Open-source project",
+      "description": "Example context for issues, decisions, releases, and agent work.",
+      "status": "roadmap-example",
+      "visibility": "not-available",
+      "readAccess": "not-available",
+      "contributionAccess": "not-available"
+    }
+  ]
+}

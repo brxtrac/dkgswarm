@@ -1,0 +1,18 @@
+{
+  "name": "dkg-public-mcp",
+  "version": "1.0.0",
+  "description": "Public MCP for TRAC marketing DKG context graph",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "express": "^5.2.1",
+    "zod": "^4.6.4"
+  }
+}

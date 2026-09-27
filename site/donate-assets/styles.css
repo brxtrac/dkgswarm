@@ -1,0 +1,680 @@
+.donate-page {
+  overflow-x: hidden;
+}
+
+.donate-page .page-shell {
+  width: min(1260px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 20px 0 56px;
+  overflow-x: clip;
+}
+
+html:has(body.donate-page),
+body.donate-page,
+body.donate-page main,
+body.donate-page .hero-copy,
+body.donate-page .pixel-hero {
+  overflow-x: hidden;
+}
+
+.donate-page .topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 12px 0 24px;
+  padding: 14px 22px;
+  background: linear-gradient(180deg, #0a0a0a, rgba(10, 10, 10, 0.9));
+  border: 2px solid #bb86fc;
+  border-radius: 14px;
+  box-shadow: 0 0 20px rgba(187, 134, 252, 0.24);
+}
+
+.donate-page .brand {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.85rem;
+  color: #7cff6b;
+  text-shadow: 0 0 10px rgba(124, 255, 107, 0.3);
+}
+
+.donate-page .topnav {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  justify-content: flex-end;
+  justify-self: end;
+  width: max-content;
+  text-align: right;
+}
+
+.donate-page .topnav a {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.62rem;
+  line-height: 1.4;
+  padding: 8px 10px;
+  color: #bb86fc;
+  text-shadow: 0 0 5px rgba(187, 134, 252, 0.45);
+}
+
+.donate-page .donate-hero,
+.donate-page .donate-section {
+  margin: 20px 0;
+}
+
+.donate-page .donate-hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.donate-page .hero-copy {
+  max-width: 920px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.donate-page .pixel-hero {
+  padding: 10px 10px 6px;
+  min-height: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.donate-page h1 {
+  max-width: none;
+  margin: 10px auto 0;
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+}
+
+.donate-page .hero-text {
+  max-width: 660px;
+  margin: 16px auto 0;
+  font-size: 1.35rem;
+}
+
+.donate-page h1,
+.donate-page .section-head,
+.donate-page .section-head h2,
+.donate-page .section-head p,
+.donate-page .project-panel__top,
+.donate-page .project-tag {
+  text-align: center;
+}
+
+.donate-page .hero-actions,
+.donate-page .action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.donate-page .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.8rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.donate-page .button:hover {
+  transform: scale(1.03);
+}
+
+.donate-page .button-primary {
+  color: #0a0a0a;
+  background: linear-gradient(45deg, #bb86fc, #ff7597);
+  box-shadow: 0 0 15px rgba(187, 134, 252, 0.7);
+}
+
+.donate-page .button-secondary,
+.donate-page .button-ghost {
+  color: #e6e6e6;
+  background: rgba(9, 10, 14, 0.55);
+  border-color: rgba(67, 182, 255, 0.45);
+}
+
+.donate-page .section-head {
+  max-width: 760px;
+  margin: 0 auto 22px;
+}
+
+.donate-page .section-head h2 {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.donate-page .section-head p {
+  margin-top: 12px;
+}
+
+.donate-page .featured-grid,
+.donate-page .how-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(250px, 0.85fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.donate-page .how-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.donate-page .project-panel,
+.donate-page .notes-panel,
+.donate-page .project-card,
+.donate-page .how-grid article {
+  background: rgba(9, 10, 14, 0.45);
+  border: 3px solid #1b1b24;
+  border-radius: 12px;
+  box-shadow: 8px 8px 0 #1b1b24;
+  padding: 20px;
+}
+
+.donate-page .notes-panel h3,
+.donate-page .project-panel h3,
+.donate-page .how-grid h3 {
+  margin-top: 0;
+}
+
+.donate-page .project-panel__top {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.donate-page .project-summary {
+  margin: 14px auto 0;
+  max-width: 720px;
+  text-align: center;
+}
+
+.donate-page .info-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.donate-page .info-strip__item,
+.donate-page .hero-stat {
+  background: rgba(9, 10, 14, 0.6);
+  border: 2px solid rgba(67, 182, 255, 0.3);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+.donate-page .hero-panel {
+  display: grid;
+  gap: 16px;
+  max-width: 1040px;
+  width: 100%;
+  margin: 6px auto 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.donate-page .hero-stat__label,
+.donate-page .wallet-box__label,
+.donate-page .project-tag,
+.donate-page .info-strip__label {
+  display: block;
+  margin-bottom: 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.62rem;
+  line-height: 1.6;
+  color: #ffcf5c;
+}
+
+.donate-page .hero-stat__label {
+  font-size: 0.78rem;
+  margin-bottom: 10px;
+}
+
+.donate-page .hero-stat__value {
+  display: block;
+  font-family: 'VT323', monospace;
+  font-size: 1.85rem;
+  line-height: 1.18;
+  color: #e6e6e6;
+}
+
+.donate-page .wallet-box {
+  margin-top: 18px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(67, 182, 255, 0.4);
+  background: rgba(9, 10, 14, 0.55);
+}
+
+.donate-page .wallet-box__value,
+.donate-page .project-card__address {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  word-break: break-all;
+  color: #e6e6e6;
+}
+
+.donate-page .helper-text {
+  min-height: 22px;
+  margin: 16px 0 0;
+  color: #43b6ff;
+}
+
+.donate-page .wallet-live-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.donate-page .wallet-live-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.donate-page .funding-progress {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 2px solid rgba(124, 255, 107, 0.22);
+  border-radius: 10px;
+  background: rgba(9, 10, 14, 0.55);
+}
+
+.donate-page .funding-progress__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.62rem;
+  line-height: 1.7;
+  color: #ffcf5c;
+}
+
+.donate-page .funding-progress__meta strong {
+  color: #7cff6b;
+  font-size: 0.72rem;
+}
+
+.donate-page .funding-progress__bar {
+  height: 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(67, 182, 255, 0.12);
+  border: 1px solid rgba(67, 182, 255, 0.28);
+}
+
+.donate-page .funding-progress__bar span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #7cff6b, #43b6ff);
+  box-shadow: 0 0 14px rgba(124, 255, 107, 0.35);
+  transition: width 0.4s ease;
+}
+
+.donate-page .wallet-live-card {
+  padding: 14px;
+  border: 2px solid rgba(67, 182, 255, 0.3);
+  border-radius: 10px;
+  background: rgba(9, 10, 14, 0.55);
+}
+
+.donate-page .wallet-live-label {
+  display: block;
+  margin-bottom: 8px;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 0.62rem;
+  line-height: 1.7;
+  color: #ffcf5c;
+}
+
+.donate-page .wallet-live-value {
+  display: block;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #7cff6b;
+}
+
+.donate-page .wallet-live-value--small {
+  font-size: 0.8rem;
+}
+
+.donate-page .wallet-asset-list,
+.donate-page .wallet-live-note {
+  display: none;
+}
+
+.donate-page .notes-list {
+  margin: 12px 0 0;
+  padding-left: 20px;
+}
+
+.donate-page .project-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.donate-page .project-card__meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.donate-page .pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(67, 182, 255, 0.12);
+  color: #43b6ff;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.donate-page .tiny-marquee {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 18px;
+  margin-bottom: 14px;
+  overflow: hidden;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.donate-page .tiny-marquee span {
+  display: inline-block;
+  max-width: none;
+  will-change: transform;
+}
+
+@keyframes donateMarqMobile {
+  0% {
+    transform: translateY(-50%);
+  }
+  100% {
+    transform: translate(calc(-100% - 100vw), -50%);
+  }
+}
+
+.donate-page .pixel-anim {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 920px;
+  height: 120px;
+  margin: 18px auto 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.donate-page .pixel-anim .trail {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 22px;
+  z-index: 1;
+}
+
+.donate-page .pixel-anim .train {
+  position: absolute;
+  left: -220px;
+  bottom: 26px;
+  width: 220px;
+  height: 56px;
+  display: block;
+  z-index: 2;
+  animation: trainMove 8s linear infinite;
+  filter: drop-shadow(6px 6px 0 rgba(27, 27, 36, 1));
+}
+
+.donate-page .pixel-anim__caption,
+.donate-page #particles-js {
+  pointer-events: none;
+}
+
+.donate-page .pixel-hero,
+.donate-page .hero-panel,
+.donate-page .project-panel,
+.donate-page .notes-panel,
+.donate-page .section-head,
+.donate-page .project-card {
+  position: relative;
+  z-index: 1;
+}
+
+.donate-page .action-row,
+.donate-page .button,
+.donate-page .button:visited,
+.donate-page .project-card .button {
+  position: relative;
+  z-index: 3;
+  pointer-events: auto;
+}
+
+@media (max-width: 920px) {
+  .donate-page .page-shell {
+    width: min(100% - 24px, 1200px);
+    padding-bottom: 40px;
+  }
+
+  .donate-page .topbar {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .donate-page .brand,
+  .donate-page .topnav {
+    justify-self: stretch;
+    width: 100%;
+    text-align: center;
+  }
+
+  .donate-page .topnav {
+    justify-content: center;
+    gap: 10px 14px;
+    margin-left: 0;
+  }
+
+  .donate-page .tiny-marquee {
+    width: min(100%, 100vw - 32px);
+    max-width: min(100%, 100vw - 32px);
+    height: 38px;
+    margin-top: 18px;
+    margin-bottom: 14px;
+    box-shadow: none;
+  }
+
+  .donate-page .tiny-marquee span {
+    position: absolute;
+    left: 100%;
+    top: 50%;
+    display: inline-block;
+    width: auto;
+    white-space: nowrap;
+    padding: 0;
+    line-height: 1;
+    animation: donateMarqMobile 16s linear infinite;
+    transform: translateY(-50%);
+    font-size: 0.58rem;
+  }
+
+  .donate-page .donate-hero,
+  .donate-page .donate-section {
+    margin: 14px 0;
+  }
+
+  .donate-page h1 {
+    font-size: clamp(1.55rem, 6vw, 2.15rem);
+  }
+
+  .donate-page .hero-text {
+    max-width: 34rem;
+    margin-top: 12px;
+    font-size: 1.15rem;
+    line-height: 1.35;
+  }
+
+  .donate-page .section-head {
+    margin-bottom: 16px;
+  }
+
+  .donate-page .featured-grid,
+  .donate-page .project-list,
+  .donate-page .info-strip,
+  .donate-page .how-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .donate-page .hero-panel {
+    max-width: 720px;
+    gap: 12px;
+    grid-template-columns: 1fr;
+    margin-top: 8px;
+  }
+
+  .donate-page .hero-stat,
+  .donate-page .project-panel,
+  .donate-page .notes-panel,
+  .donate-page .project-card {
+    padding: 16px;
+    box-shadow: 6px 6px 0 #1b1b24;
+  }
+
+  .donate-page .hero-stat__label {
+    font-size: 0.68rem;
+  }
+
+  .donate-page .hero-stat__value {
+    font-size: 1.6rem;
+  }
+
+  .donate-page .project-panel__top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .donate-page .button {
+    min-height: 44px;
+    font-size: 0.72rem;
+    padding: 0 14px;
+  }
+
+  .donate-page .funding-progress__meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .donate-page .page-shell {
+    width: min(100% - 20px, 1200px);
+    padding-top: 10px;
+  }
+
+  .donate-page .pixel-hero {
+    padding: 10px 10px 6px;
+  }
+
+  .donate-page h1,
+  .donate-page .hero-text,
+  .donate-page .tiny-marquee,
+  .donate-page .pixel-anim {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .donate-page h1 {
+    font-size: clamp(1.4rem, 7vw, 1.85rem);
+    line-height: 1.15;
+  }
+
+  .donate-page .hero-text {
+    font-size: 1rem;
+    margin-top: 10px;
+  }
+
+  .donate-page .tiny-marquee {
+    font-size: 0.62rem;
+  }
+
+  .donate-page .pixel-anim {
+    width: min(100%, 100vw - 32px);
+    max-width: min(100%, 100vw - 32px);
+    margin-top: 18px;
+    transform: none;
+  }
+
+  .donate-page .topnav {
+    justify-content: center;
+    text-align: center;
+    gap: 8px 10px;
+  }
+
+  .donate-page .topnav a {
+    font-size: 0.88rem;
+    padding: 4px 6px;
+  }
+
+  .donate-page .hero-panel {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-top: 0;
+  }
+
+  .donate-page .hero-stat {
+    padding: 14px 16px;
+  }
+
+  .donate-page .hero-stat__label {
+    font-size: 0.62rem;
+    margin-bottom: 8px;
+  }
+
+  .donate-page .hero-stat__value {
+    font-size: 1.45rem;
+    line-height: 1.15;
+  }
+
+  .donate-page .section-head h2,
+  .donate-page .project-panel h3,
+  .donate-page .notes-panel h3,
+  .donate-page .project-card h3 {
+    line-height: 1.25;
+  }
+
+  .donate-page .project-summary,
+  .donate-page .helper-text,
+  .donate-page .wallet-box__value,
+  .donate-page .project-card__address {
+    font-size: 0.95rem;
+  }
+
+  .donate-page .button,
+  .donate-page .hero-actions a,
+  .donate-page .action-row button,
+  .donate-page .action-row a {
+    width: 100%;
+  }
+}
