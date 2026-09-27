@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 const graph = "trac-marketing";
-const db = new DatabaseSync(process.env.WATCH_DB || "/root/dkg-swarm-webhooks/data/watcher.sqlite", { readOnly: true });
+const watcherDb = () => new DatabaseSync(process.env.WATCH_DB || "/root/dkg-swarm-webhooks/data/watcher.sqlite", { readOnly: true });
 const api = (process.env.DKG_API_URL || "http://127.0.0.1:9200").replace(/\/$/, "");
 const token = process.argv[1]?.endsWith("curator.mjs") ? (fs.readFileSync(process.env.DKG_API_TOKEN_FILE || "/root/.dkg/auth.token", "utf8")
   .split(/\n/).find((line) => line.trim() && !line.startsWith("#")) || "").trim() : "";
@@ -88,13 +88,15 @@ async function request(route, body, method = "POST") {
 }
 
 function candidates() {
-  return db.prepare(`SELECT o.post_id, o.account, o.post_url, o.summary, o.created_at, o.observed_at,
+  const db = watcherDb();
+  try { return db.prepare(`SELECT o.post_id, o.account, o.post_url, o.summary, o.created_at, o.observed_at,
       o.classification_json, r.status AS raw_status, i.status AS insight_status
     FROM observations o
     JOIN deliveries r ON r.post_id = o.post_id AND r.stage = 'raw-dkg'
     JOIN deliveries i ON i.post_id = o.post_id AND i.stage = 'derived-dkg'
     WHERE r.status = 'completed' AND i.status = 'completed'
     ORDER BY o.observed_at DESC`).all();
+  } finally { db.close(); }
 }
 
 // Duplicate inventory is evidence for review, but SPARQL term metadata and
@@ -226,9 +228,11 @@ async function main() {
   }
   if (action !== "review" && action !== "promote") throw new Error("Usage: node curator.mjs list|review <post-id>|promote <post-id>");
   if (!/^\d{8,22}$/.test(id || "")) throw new Error("invalid X post ID");
+  const db = watcherDb();
   const row = db.prepare(`SELECT o.*, r.status AS raw_status, i.status AS insight_status
     FROM observations o JOIN deliveries r ON r.post_id = o.post_id AND r.stage = 'raw-dkg'
     JOIN deliveries i ON i.post_id = o.post_id AND i.stage = 'derived-dkg' WHERE o.post_id = ?`).get(id);
+  db.close();
   if (!row || row.raw_status !== "completed" || row.insight_status !== "completed") throw new Error("both WM drafts must be complete");
   if (canonicalUrl(row.post_url) !== `https://x.com/i/status/${id}`) throw new Error("source URL does not match post ID");
   const url = canonicalUrl(row.post_url);
