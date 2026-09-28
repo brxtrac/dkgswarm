@@ -989,8 +989,6 @@ footer a { font-family: 'IBM Plex Mono', monospace; font-size: 0.82rem; }
 .trust-grid article, .future-contexts article, .availability-grid article { padding: 22px; border-top: 3px solid var(--blue); background: #0a0e12; }
 .trust-grid article > span, .availability-grid article > span, .roadmap-tag { color: var(--yellow); font: 600 0.66rem 'IBM Plex Mono', monospace; letter-spacing: 0.08em; }
 .trust-grid p, .future-contexts p, .availability-grid p { color: var(--muted); font-size: 0.95rem; }
-.game-intro { border-left: 4px solid var(--blue); background: linear-gradient(105deg, #102238, #0a0e12 70%); }
-.game-intro__note { color: var(--muted); font: 600 .8rem 'IBM Plex Mono', monospace; align-self: center; }
 .future-contexts { grid-template-columns: repeat(3, 1fr); }
 .future-contexts article { border-top-color: #bb86fc; }
 .roadmap-tag { color: #cba5ff; }
