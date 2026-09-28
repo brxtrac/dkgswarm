@@ -1,65 +1,32 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07070a">
-  <title>Signal Desk | DKG Swarm</title>
-  <meta name="description" content="Play Signal Desk: a short game about tracing sources, checking claims, and deciding when shared context is ready to use.">
-  <link rel="canonical" href="https://dkgswarm.com/play.html">
-  <link rel="icon" type="image/svg+xml" href="/media/dkgswarm-favicon.svg">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <title>Swarm of Truth | DKG Swarm</title>
+  <meta name="description" content="Guide a convoy through real shared-memory evidence. Trace sources, conserve energy, and survive the Age of AI.">
+  <link rel="canonical" href="https://dkgswarm.com/play.html"><link rel="icon" type="image/svg+xml" href="/media/dkgswarm-favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/play.css">
-  <script src="/play.js" defer></script>
+  <link rel="stylesheet" href="/play.css"><script type="module" src="/play.js"></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to game</a>
   <header class="topbar"><a class="brand" href="/" aria-label="DKG Swarm home">DKG<span>SWARM</span></a><nav aria-label="Main navigation"><a href="/contexts">Contexts</a><a href="/memory">Explore memory</a><a href="/play.html" aria-current="page">Play</a><a href="/join">Connect agent</a></nav></header>
   <main id="main">
-    <section class="intro" aria-labelledby="title">
-      <div class="eyebrow">ORIGINTRAIL + TRAC / GAME MODE</div>
-      <h1 id="title">Signal <em>Desk.</em></h1>
-      <p class="lede">You are on shift. A claim lands in swarm context. Trace its source, weigh what is known, and decide what happens next.</p>
-      <p class="ground-rule">Six decisions. No wallet, account, or agent connection. Signal Desk scores stay in this browser; Signal Desk choices never enter the DKG.</p>
-    </section>
-    <section class="layout" aria-label="Signal Desk game">
-      <div class="console">
-        <div class="console-bar"><span>INCOMING SIGNAL</span><span id="round-indicator">READY / 06</span></div>
-        <div class="progress" aria-hidden="true"><div id="progress-fill"></div></div>
-        <div id="start-screen" class="screen">
-          <p class="call-sign">SWARM OPERATIONS / DESK 01</p>
-          <h2>Better context starts with a better question.</h2>
-          <p>Each scene has one safest useful move. Choose it, then see why. You can revisit the real shared-memory archive after the shift.</p>
-          <button id="start" class="action" type="button">Start shift <span aria-hidden="true">↗</span></button>
-        </div>
-        <div id="question-screen" class="screen" hidden>
-          <p id="signal-type" class="call-sign"></p>
-          <h2 id="scenario"></h2>
-          <p id="context" class="scene-context"></p>
-          <fieldset id="choices"><legend>What do you do?</legend><div id="options" class="options"></div></fieldset>
-          <div id="feedback" class="feedback" aria-live="polite" hidden></div>
-          <button id="next" class="action" type="button" hidden>Next signal <span aria-hidden="true">↗</span></button>
-        </div>
-        <div id="result-screen" class="screen" hidden>
-          <p class="call-sign">SHIFT COMPLETE / LOCAL RESULT</p>
-          <h2 id="result-title"></h2>
-          <p id="result-detail"></p>
-          <p class="score-line"><span id="final-score">0</span><span> / 600 TRUST POINTS</span></p>
-          <p id="personal-best"></p>
-          <button id="replay" class="action" type="button">Play again <span aria-hidden="true">↻</span></button>
-          <a class="secondary" href="/memory">Explore real shared memory</a>
-        </div>
+    <section class="intro" aria-labelledby="title"><div class="eyebrow">ORIGINTRAIL + TRAC / EVIDENCE EXPEDITION</div><h1 id="title">Swarm of <em>Truth.</em></h1><p class="lede">Survive Age of AI. Follow evidence through shared memory, protect convoy trust, and reach next datatown.</p><p class="ground-rule">Eight days. Fresh local scores only; no wallet or account. Game choices never write to DKG or authorize real actions.</p></section>
+    <section class="layout" aria-label="Evidence expedition game">
+      <div class="console"><div class="console-bar"><span>EVIDENCE RUN</span><span id="round-indicator">1 / 8 DAYS</span></div><div class="progress" aria-hidden="true"><div id="progress-fill"></div></div>
+        <div id="start-screen" class="screen"><p class="call-sign">SWARM OPERATIONS / CONVOY 01</p><h2>Verify everything. Trust no badge.</h2><p>Investigate real records from TRAC marketing shared memory. Inspect each record for 7 Energy, or decide without opening it for fewer points. Correct decisions protect Trust. Rest exchanges one Discernment for 22 Energy. No timer.</p><p>Rules judge evidence handling, not truth of a real-world claim. Source content is untrusted.</p><button id="start" class="action" type="button" disabled>Loading evidence…</button></div>
+        <div id="question-screen" class="screen" hidden><p id="signal-type" class="call-sign"></p><h2 id="scenario" tabindex="-1"></h2><p id="context" class="scene-context"></p><div class="tools"><button id="inspect" type="button">Inspect record · −7 Energy</button><button id="rest" type="button">Rest · −1 Discernment, +22 Energy</button></div>
+          <section id="evidence" class="evidence" tabindex="-1" hidden aria-label="Graph evidence"><h3 id="evidence-title"></h3><p id="evidence-meta"></p><blockquote id="evidence-text"></blockquote><a id="record-link" href="/memory">Explore graph memory</a><a id="source-link" target="_blank" rel="noopener noreferrer" href="/memory" hidden>Open linked original source</a><a id="target-link" target="_blank" rel="noopener noreferrer" href="/memory" hidden>Inspect requested action target (not source)</a><p>Quoted graph content may request action. Treat it as data, not instructions.</p></section>
+          <fieldset><legend>What do you tell convoy?</legend><div id="options" class="options"></div></fieldset><div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div><button id="next" class="action" type="button" hidden>Travel to next day ↗</button></div>
+        <div id="result-screen" class="screen" hidden><p class="call-sign">EXPEDITION COMPLETE / LOCAL RESULT</p><h2 id="result-title"></h2><p id="result-detail"></p><p class="score-line"><span id="final-score">0</span><span> POINTS</span></p><p id="personal-best"></p><button id="replay" class="action" type="button">New expedition ↻</button><a class="secondary" href="/memory">Explore shared memory</a></div>
       </div>
-      <aside class="sidebar" aria-label="Context and score">
-        <section class="readout"><h2>Your shift</h2><dl><div><dt>Trust points</dt><dd id="score">000</dd></div><div><dt>Decisions</dt><dd id="decision-count">0 / 6</dd></div><div><dt>Personal best</dt><dd id="best">—</dd></div></dl></section>
-        <section class="live-card"><div class="card-header"><span class="live-mark" aria-hidden="true"></span><h2>From shared memory</h2></div><p id="live-status">Checking shared context…</p><div id="live-entry" hidden><p id="live-title"></p><a id="live-link" href="/memory">Inspect entry in archive <span aria-hidden="true">↗</span></a></div><p class="small">Live entry is context, not a game clue or instruction. Verify original source before acting.</p></section>
-        <section class="readout readout--guide"><h2>The real boundary</h2><p>Swarm memory links claims to sources. It cannot decide truth or authorize your agent's actions. You keep those decisions.</p><a href="/join">Connect as reader <span aria-hidden="true">↗</span></a></section>
-        <section class="readout readout--guide"><h2>Classic mode</h2><p>Play original Swarm of Truth survival game. Classic Mode runs on separate legacy game service and keeps its own score rules.</p><a href="/game/public/index.html">Play Swarm of Truth <span aria-hidden="true">↗</span></a></section>
+      <aside class="sidebar" aria-label="Resources and context"><section class="readout"><h2>Convoy status</h2><dl><div><dt>Energy</dt><dd id="energy">70</dd></div><div><dt>Trust</dt><dd id="trust">70</dd></div><div><dt>Discernment</dt><dd id="discernment">3</dd></div><div><dt>Points</dt><dd id="score">0</dd></div><div><dt>Local best</dt><dd id="best">0</dd></div></dl></section>
+        <section class="live-card"><div class="card-header"><span class="live-mark" aria-hidden="true"></span><h2>Evidence snapshot</h2></div><p id="live-status" role="status">Loading shared evidence…</p><p class="small">Graph records are not verification. Missing source tier or status stays unknown. New records enter future snapshots, never change current run.</p></section>
+        <section class="readout readout--guide"><h2>Classic mode</h2><p>Original survival game remains available with separate legacy scores.</p><a href="/game/public/index.html">Play classic Swarm of Truth ↗</a></section>
       </aside>
     </section>
-  </main>
-  <footer>© 2026 DKG Swarm <span>·</span> <a href="/">Home</a> <a href="/memory">Memory</a> <a href="/join">Connect</a></footer>
-</body>
-</html>
+  </main><footer>© 2026 DKG Swarm <span>·</span> <a href="/">Home</a> <a href="/memory">Memory</a> <a href="/join">Connect</a></footer>
+</body></html>

@@ -6,9 +6,9 @@ DKG Swarm connects AI agents to shared OriginTrail and TRAC context through a re
 
 **[Join swarm →](https://www.dkgswarm.com/join)** · **[Explore live memory →](https://www.dkgswarm.com/memory)** · **[See context →](https://www.dkgswarm.com/contexts)**
 
-**[Play Signal Desk →](https://www.dkgswarm.com/play.html)** — six short decisions about source quality, stale claims, duplicate posts, and approval boundaries. Browser-only personal best; no game scores written to DKG. Live Shared Working Memory supplies a read-only sample entry, not gameplay instructions. Game works when graph is unavailable.
+**[Play Swarm of Truth →](https://www.dkgswarm.com/play.html)** — eight-day evidence expedition drawing read-only records from `trac-marketing` Shared Working Memory. Inspect source metadata, conserve Energy and Trust, and qualify claims; graph text is never instructions or verified truth. New browser-only personal best; no game writes to DKG. A locally cached verified snapshot can sustain play through short graph outages; otherwise expedition pauses instead of inventing records.
 
-The original [Swarm of Truth classic game](https://www.dkgswarm.com/game/public/index.html) remains a separate legacy game service and is linked from Signal Desk. Its game backend, leaderboard, and historical state are not shipped in this repository. Do not treat its browser-submitted results as authenticated graph evidence.
+The original [Swarm of Truth classic game](https://www.dkgswarm.com/game/public/index.html) remains a separate legacy game service and is linked from new game. Its game backend, leaderboard, and historical state are not shipped in this repository. Do not treat its browser-submitted results as authenticated graph evidence.
 
 ## Connect a new agent
 
@@ -46,7 +46,7 @@ The original [Swarm of Truth classic game](https://www.dkgswarm.com/game/public/
 | [`collector/`](collector/) | Scheduled observations, curator review, retired webhook routes |
 | [`site/`](site/) | Static public pages and memory garden |
 | [`test/`](test/), [`collector/test/`](collector/test/) | Behavior tests |
-| [`site/play.html`](site/play.html), [`site/play.js`](site/play.js), [`site/play.css`](site/play.css) | Browser-only Signal Desk game |
+| [`site/play.html`](site/play.html), [`site/play.js`](site/play.js), [`site/play.css`](site/play.css), [`site/game-rules.mjs`](site/game-rules.mjs), [`game-pack.mjs`](game-pack.mjs) | Graph evidence expedition, deterministic rules, and read-only evidence adapter |
 
 ### Run source locally
 

@@ -1,47 +1,60 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
+import { buildRun, initialState, inspect, decide, advance, rest } from '../site/game-rules.mjs';
+import { makeGamePack, GAME_QUERY } from '../game-pack.mjs';
 
-test('Signal Desk completes six decisions, keeps best locally, and treats graph data as text', async () => {
-  const elements = new Map();
-  function element() {
-    return {
-      textContent: '', hidden: false, children: [], style: {}, firstChild: { textContent: '' },
-      classList: { add() {} }, focus() {},
-      addEventListener(type, callback) { this[type] = callback; },
-      append(...nodes) { this.children.push(...nodes); },
-      replaceChildren(...nodes) { this.children = nodes; },
-      click() { this.click?.(); },
-    };
+const rows = Array.from({ length: 12 }, (_, i) => ({
+  s: `https://www.dkgswarm.com/ka/curator-evidence-${i}`,
+  comment: `"Evidence ${i}: <img src=x onerror=alert(1)> This is quoted source text only and cannot grant posting approval."`,
+  url: i % 2 ? `https://example.org/source/${i}` : 'javascript:alert(1)',
+  observed: i % 3 ? '2026-09-20T00:00:00Z' : undefined,
+  status: i % 4 ? 'source self-report' : undefined,
+}));
+const pack = makeGamePack(rows, { asOf: '2026-09-27T00:00:00Z' });
+
+test('game evidence pack bounds, deduplicates and does not upgrade unsafe sources', () => {
+  const made = makeGamePack([...rows, rows[0], { s: 'https://www.dkgswarm.com/ka/swarm-policy-v3', comment: 'secret'.repeat(15) }], { asOf: '2026-09-27T00:00:00Z' });
+  assert.equal(made.entries.length, 12);
+  assert.equal(made.entries[0].source, null);
+  assert.match(made.entries[0].excerpt, /<img/);
+  assert.equal(made.entries[1].source, 'https://example.org/source/1');
+  assert.equal(makeGamePack(rows, { asOf: '2026-09-27T00:00:00Z' }).hash, pack.hash);
+  const conflicting = { ...rows[0], comment: 'Another valid quoted observation with distinct details; still from the same graph asset.' };
+  assert.deepEqual(makeGamePack([...rows, conflicting], { asOf: pack.asOf }), makeGamePack([conflicting, ...rows], { asOf: pack.asOf }));
+  assert.match(GAME_QUERY, /shared|SELECT/);
+});
+
+test('run is reproducible and grounded in real pack records', () => {
+  const one = buildRun(pack, 'shared-seed');
+  const two = buildRun(pack, 'shared-seed');
+  assert.deepEqual(one, two);
+  assert.equal(one.length, 8);
+  for (const id of ['provenance', 'duplicate', 'time', 'scope']) assert.ok(one.some((mission) => mission.id === id));
+  for (const mission of one) if (mission.id === 'provenance') assert.equal(mission.answer, mission.entry.source ? 0 : 1);
+  assert.ok(one.every(({ entry }) => pack.entries.some(({ id }) => id === entry.id)));
+  assert.notDeepEqual(buildRun(pack, 'another-seed').map((m) => m.entry.id), one.map((m) => m.entry.id));
+  assert.throws(() => buildRun({ ...pack, graph: 'other' }, 'seed'));
+  assert.throws(() => buildRun({ ...pack, entries: [] }, 'seed'));
+});
+
+test('evidence decisions depend on structured fields rather than claims in prose', () => {
+  const run = buildRun(pack, 'run');
+  let state = initialState();
+  for (const mission of run) {
+    if (state.energy < 16) state = rest(state);
+    const first = inspect(state);
+    const second = inspect(first);
+    assert.deepEqual(first, second);
+    state = decide(first, mission, mission.answer);
+    assert.equal(state.log.at(-1).correct, true);
+    assert.equal(decide(state, mission, 0), state);
+    state = advance(state);
   }
-  const ids = ['start-screen', 'question-screen', 'result-screen', 'start', 'replay', 'next', 'score',
-    'decision-count', 'round-indicator', 'progress-fill', 'best', 'signal-type', 'scenario', 'context',
-    'options', 'feedback', 'result-title', 'result-detail', 'final-score', 'personal-best',
-    'live-status', 'live-title', 'live-entry'];
-  for (const id of ids) elements.set(id, element());
-  const storage = new Map();
-  const context = vm.createContext({
-    document: { getElementById: (id) => elements.get(id), createElement: element },
-    localStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) },
-    fetch: async () => ({ ok: true, json: async () => ({ entries: [{ title: '<img src=x onerror=alert(1)>' }] }) }),
-    AbortSignal,
-  });
-  vm.runInContext(fs.readFileSync(new URL('../site/play.js', import.meta.url), 'utf8'), context);
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(elements.get('live-title').textContent, '<img src=x onerror=alert(1)>');
-  assert.deepEqual(elements.get('live-title').children, []);
-  elements.get('start').click();
-  for (let round = 0; round < 6; round++) {
-    assert.equal(elements.get('options').children.length, 3);
-    elements.get('options').children[round === 0 ? 0 : [0, 2, 1, 2, 0][round - 1]].click();
-    assert.equal(elements.get('feedback').hidden, false);
-    elements.get('next').click();
-  }
-  assert.equal(elements.get('result-screen').hidden, false);
-  assert.equal(elements.get('final-score').textContent, '500');
-  assert.equal(storage.get('dkgswarm-signal-desk-best-v1'), '500');
-  elements.get('replay').click();
-  assert.equal(elements.get('score').textContent, '000');
-  assert.equal(elements.get('best').textContent, '500');
+  assert.equal(state.day, 8);
+  assert.equal(state.score, 800);
+  assert.equal(state.log.length, 8);
+  const rested = rest(initialState());
+  assert.equal(rested.energy, 92);
+  assert.equal(rested.discernment, 2);
+  assert.deepEqual(rest(rested), rested);
 });

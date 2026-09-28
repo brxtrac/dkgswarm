@@ -20,6 +20,7 @@ import { enqueueCuratorDraft, triggerCurator } from "./curator-intake.mjs";
 import { createActivity } from "./activity.mjs";
 import { verifyPolicyBindings } from "./policy-integrity.mjs";
 import { assertReadSparql } from "./query-guard.mjs";
+import { GAME_QUERY, makeGamePack } from "./game-pack.mjs";
 import {
   SOCIAL_WORKER_INSTRUCTIONS,
   SOCIAL_WORKER_PROFILE,
@@ -671,6 +672,41 @@ app.get("/api/swarm/stats", (_req, res) => {
 });
 
 // Public exhibit reads only curator-shared memory. Draft Working Memory stays private.
+let gamePackCache = null;
+let gamePackPending = null;
+app.get('/api/swarm/game-pack', async (_req, res) => {
+  try {
+    if (gamePackCache && Date.now() - gamePackCache.at > 7 * 86400000) gamePackCache = null;
+    if ((!gamePackCache || Date.now() - gamePackCache.at > 300000) && (!gamePackCache || Date.now() >= (gamePackCache.retryAfter || 0))) {
+      gamePackPending ||= (async () => {
+        const rows = [];
+        for (let offset = 0; offset < 400; offset += 100) {
+          const data = await dkgFetch('/api/query', { method: 'POST', body: {
+            contextGraphId: GRAPH_ID, view: 'shared-working-memory', sparql: `${GAME_QUERY}${offset}`,
+          }, timeoutMs: 10000 });
+          const batch = data?.result?.bindings || [];
+          rows.push(...batch);
+          if (batch.length < 100) break;
+        }
+        const pack = makeGamePack(rows, { graph: GRAPH_ID });
+        if (pack.entries.length < 3) throw new Error('Insufficient eligible shared evidence');
+        gamePackCache = { at: Date.now(), pack };
+      })().finally(() => { gamePackPending = null; });
+      try { await gamePackPending; }
+      catch (error) {
+        if (!gamePackCache || Date.now() - gamePackCache.at > 7 * 86400000) throw error;
+        // Back off retries on a short outage; retain original snapshot timestamp.
+        gamePackCache.retryAfter = Date.now() + 60000;
+      }
+    }
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+    res.json(gamePackCache.pack);
+  } catch (error) {
+    console.error('public game evidence unavailable', error);
+    res.set('Cache-Control', 'no-store');
+    res.status(503).json({ error: 'Shared evidence temporarily unavailable' });
+  }
+});
 app.get("/api/swarm/memory", async (req, res) => {
   try {
     const offset = Number(req.query.offset ?? 0);
