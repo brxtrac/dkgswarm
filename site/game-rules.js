@@ -35,7 +35,7 @@ export function buildRun(pack, seed) {
   return run;
 }
 
-export function initialState() { return { day: 0, energy: 70, trust: 70, discernment: 3, score: 0, inspected: false, resolved: false, log: [] }; }
+export function initialState() { return { day: 0, energy: 70, trust: 70, discernment: 3, score: 0, inspected: false, rested: false, resolved: false, log: [] }; }
 export function inspect(state) {
   if (state.resolved || state.inspected || state.energy < 7) return state;
   return { ...state, inspected: true, energy: state.energy - 7 };
@@ -51,9 +51,26 @@ export function decide(state, mission, choice) {
 }
 export function advance(state) {
   if (!state.resolved) return state;
-  return { ...state, day: state.day + 1, energy: Math.max(0, state.energy - 4), inspected: false, resolved: false };
+  return { ...state, day: state.day + 1, energy: Math.max(0, state.energy - 4), inspected: false, rested: false, resolved: false };
 }
 export function rest(state) {
-  if (state.resolved || state.inspected || state.discernment < 1 || state.energy >= 90) return state;
-  return { ...state, discernment: state.discernment - 1, energy: Math.min(100, state.energy + 22) };
+  if (state.resolved || state.inspected || state.rested || state.discernment < 1 || state.energy >= 90) return state;
+  return { ...state, rested: true, discernment: state.discernment - 1, energy: Math.min(100, state.energy + 22) };
+}
+
+// Agent and human use same rules. Submitted choices never write to DKG or claim verified truth.
+export function scoreRun(pack, seed, turns) {
+  const run = buildRun(pack, seed);
+  if (!Array.isArray(turns) || turns.length > run.length) throw new Error('Invalid game turns');
+  let state = initialState();
+  for (const turn of turns) {
+    if (state.day >= run.length || state.trust <= 0 || state.energy <= 0) throw new Error('Run already ended');
+    if (!turn || typeof turn !== 'object' || typeof turn.inspect !== 'boolean' || typeof turn.rest !== 'boolean' || !Number.isInteger(turn.choice)) throw new Error('Invalid game turn');
+    if (turn.rest) { const next = rest(state); if (next === state) throw new Error('Rest unavailable'); state = next; }
+    if (turn.inspect) { const next = inspect(state); if (next === state) throw new Error('Inspection unavailable'); state = next; }
+    const next = decide(state, run[state.day], turn.choice);
+    if (next === state) throw new Error('Choice unavailable');
+    state = advance(next);
+  }
+  return { ...state, complete: state.day === run.length || state.trust <= 0 || state.energy <= 0 };
 }

@@ -1,4 +1,4 @@
-import { buildRun, initialState, inspect, decide, advance, rest } from './game-rules.mjs';
+import { buildRun, initialState, inspect, decide, advance, rest } from './game-rules.js';
 
 const $ = (id) => document.getElementById(id);
 const bestKey = 'dkgswarm-evidence-run-best-v1';
@@ -35,7 +35,7 @@ function render() {
   $('evidence').hidden = !state.inspected && !state.resolved;
   evidence(mission.entry);
   $('inspect').disabled = state.resolved || state.inspected || state.energy < 7;
-  $('rest').disabled = state.resolved || state.inspected || state.discernment < 1 || state.energy >= 90;
+  $('rest').disabled = state.resolved || state.inspected || state.rested || state.discernment < 1 || state.energy >= 90;
   const choices = $('options'); choices.replaceChildren();
   mission.choices.forEach((text, index) => {
     const button = document.createElement('button');
@@ -84,7 +84,7 @@ async function validPack(candidate) {
 }
 async function load() {
   try {
-    const response = await fetch('/api/swarm/game-pack', { signal: AbortSignal.timeout(12000) });
+    const response = await fetch('/api/swarm/memory?format=game-pack', { signal: AbortSignal.timeout(40000) });
     if (!response.ok) throw new Error('Evidence endpoint unavailable');
     pack = await validPack(await response.json());
     try { localStorage.setItem(packKey, JSON.stringify(pack)); } catch {}

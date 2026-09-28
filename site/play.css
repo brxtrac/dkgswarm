@@ -13,6 +13,7 @@ a { color: inherit; }
 .topbar nav { display: flex; gap: clamp(12px, 2vw, 28px); flex-wrap: wrap; }
 .topbar nav a { color: var(--muted); text-decoration: none; font-size: .88rem; }
 .topbar nav a:hover, .topbar nav a[aria-current] { color: var(--amber); }
+.topbar nav a.game-nav { color: var(--ink); background: var(--amber); padding: 5px 12px; font-weight: 700; }
 main { max-width: 1200px; margin: 0 auto; padding: 44px 24px 96px; }
 .intro { max-width: 870px; margin-bottom: 44px; }
 .eyebrow, .call-sign, .console-bar, .readout dt, .score-line, legend { font: 600 .75rem/1.5 'IBM Plex Mono', monospace; letter-spacing: .09em; }

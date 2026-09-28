@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildRun, initialState, inspect, decide, advance, rest } from '../site/game-rules.mjs';
+import { buildRun, initialState, inspect, decide, advance, rest, scoreRun } from '../site/game-rules.js';
 import { makeGamePack, GAME_QUERY } from '../game-pack.mjs';
 
 const rows = Array.from({ length: 12 }, (_, i) => ({
@@ -57,4 +57,17 @@ test('evidence decisions depend on structured fields rather than claims in prose
   assert.equal(rested.energy, 92);
   assert.equal(rested.discernment, 2);
   assert.deepEqual(rest(rested), rested);
+});
+
+test('agent and browser decisions share rules, and impossible turns fail', () => {
+  const seed = 'agent-evidence-run';
+  const missions = buildRun(pack, seed);
+  const turns = missions.map((mission, i) => ({ choice: mission.answer, inspect: true, rest: i === 5 }));
+  const scored = scoreRun(pack, seed, turns);
+  assert.equal(scored.complete, true);
+  assert.equal(scored.score, 800);
+  assert.equal(scored.log.length, 8);
+  assert.throws(() => scoreRun(pack, seed, [...turns, turns[0]]));
+  assert.throws(() => scoreRun(pack, seed, [{ choice: 9, inspect: true, rest: false }]));
+  assert.throws(() => scoreRun(pack, seed, Array.from({ length: 4 }, () => ({ choice: 0, inspect: false, rest: true }))));
 });
