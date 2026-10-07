@@ -3,6 +3,8 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import express from "express";
 import { createWatcher, normalizeXHandle } from "./watcher.mjs";
+import { createNetworkStats } from "./network-stats.mjs";
+import { publicHealth } from "./health-public.mjs";
 
 const DKG_API = (process.env.DKG_API_URL || "http://127.0.0.1:9200").replace(/\/$/, "");
 const GRAPH_ID = process.env.DKG_PUBLIC_GRAPH_ID || "trac-marketing";
@@ -50,6 +52,11 @@ const ACTIONS = new Set([
   "sync_context",
   "custom",
 ]);
+
+if (!SECRET || SECRET.length < 16) {
+  console.error("SWARM_KEY_SECRET required");
+  process.exit(1);
+}
 
 function keyBuf() {
   return crypto.scryptSync(SECRET, "dkgswarm-webhooks-v1", 32);
@@ -143,18 +150,51 @@ app.use((req, res, next) => {
   next();
 });
 
+const HEALTH_STATUS = process.env.SWARM_HEALTH_STATUS || "/root/dkg-swarm-webhooks/data/health-status.json";
+
 app.get("/api/swarm/health", (_req, res) => {
-  const db = loadDb();
-  res.json({ ok: true, registered: (db.endpoints || []).filter((e) => !e.disabled).length });
+  const health = publicHealth(HEALTH_STATUS);
+  res.set("Cache-Control", "public, max-age=60");
+  res.status(health.ok ? 200 : 503).json(health);
 });
+
+const networkStats = createNetworkStats({ log: console });
+
+app.get("/api/swarm/network", async (_req, res) => {
+  try {
+    const snapshot = await networkStats.get();
+    res.set("Cache-Control", snapshot.stale ? "no-store" : "public, max-age=300");
+    res.json(snapshot);
+  } catch {
+    res.status(503).json({ error: "Network stats temporarily unavailable" });
+  }
+});
+
+const ACTIVITY_URL = process.env.SWARM_ACTIVITY_URL || "http://172.18.0.1:27131/api/swarm/activity";
+
+async function swarmActivity() {
+  const response = await fetch(ACTIVITY_URL, { signal: AbortSignal.timeout(3000) });
+  if (!response.ok) throw new Error("activity unavailable");
+  const body = await response.json();
+  const connectedAgents = Number(body.connectedInstallations);
+  const sharedDrafts = Number(body.contributionAttempts);
+  if (!Number.isSafeInteger(connectedAgents) || !Number.isSafeInteger(sharedDrafts)) throw new Error("activity counts unavailable");
+  return { connectedAgents, sharedDrafts };
+}
 
 app.get("/api/swarm/stats", async (_req, res) => {
   try {
     const sharedPosts = await sharedPostCount();
     if (sharedPosts === null) throw new Error("shared memory unavailable");
     const sources = watcher.status().queue.find((row) => row.stage === "raw-dkg" && row.status === "completed")?.count || 0;
-    res.set("Cache-Control", "public, max-age=300");
-    res.json({ collectedSources: sources, sharedPosts });
+    const activity = await swarmActivity();
+    res.set("Cache-Control", "public, max-age=60");
+    res.json({
+      collectedSources: sources,
+      sharedPosts,
+      connectedAgents: activity.connectedAgents,
+      sharedDrafts: activity.sharedDrafts,
+    });
   } catch {
     res.status(503).json({ error: "Swarm stats temporarily unavailable" });
   }

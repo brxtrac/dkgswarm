@@ -9,6 +9,11 @@ const USER_QUERY = "G3KGOASz96M-Qu0nwmGXNg";
 const TWEETS_QUERIES = ["9zyyd1hebl7oNWIPdA8HRw", "E3opETHurmVJflFsUBVuUQ"];
 const SEARCH_QUERIES = ["auLkqtmHqYEpRvflfvLhyQ", "Yw6L66Pw54NHKuq4Dp7b4Q", "KPSo2_UWdOMpPJwjhfT1Qg"];
 const NS = "https://www.dkgswarm.com/ontology/x/";
+const CURATOR_NS = "https://www.dkgswarm.com/ontology/curator/";
+const TRUSTED_PUSH_ACCOUNTS = ["DrevZiga", "BranaRakic", "umanitek", "origin_trail"];
+const OFFICIAL_ACCOUNTS = ["origin_trail", "origintraildev", "umanitek"];
+const PUSH_WINDOW_MS = 30 * 60000;
+const MAX_DKG_ATTEMPTS = 12;
 const RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 const SCHEMA = "https://schema.org/";
 const XSD = "http://www.w3.org/2001/XMLSchema#";
@@ -71,9 +76,17 @@ export function isWorkingAsset(body) {
     || body?.status === "wm-draft" || body?.status === "wm-sealed" || body?.written > 0;
 }
 
+export function dkgHealth(status) {
+  const pendingDkg = status.queue.filter((row) => ["raw-dkg", "derived-dkg"].includes(row.stage) && row.status === "pending")
+    .reduce((count, row) => count + row.count, 0);
+  const retryingDkg = status.retryingDkg;
+  return { ok: status.dkgFailures.length === 0 && retryingDkg === 0, pendingDkg, retryingDkg,
+    quarantinedDkg: status.dkgFailures.length };
+}
+
 export function hasQueryContent(body) {
   const result = body?.result;
-  if (result?.type === "boolean") return result.value === true || result.boolean === true;
+   if (result?.type === "boolean") return result.value === true || result.value === "true" || result.boolean === true;
   if (result?.type === "bindings") return Array.isArray(result.bindings) && result.bindings.length > 0;
   if (result?.type === "quads") return Array.isArray(result.quads) && result.quads.length > 0;
   return false;
@@ -106,9 +119,44 @@ export function shouldNotifyPost(post) {
   return !post.isReply && !post.isRt;
 }
 
-function isSafeGraphUri(value) {
-  return typeof value === "string" && value.startsWith("did:dkg:context-graph:")
-    && !/[<>"{}|^`\\\s]/.test(value);
+export function trustedPushEligible(post, at = Date.now()) {
+  const account = normalizeHandle(post.account).toLowerCase();
+  const created = Date.parse(post.created_at);
+  return post.authorVerified === true && TRUSTED_PUSH_ACCOUNTS.some((handle) => handle.toLowerCase() === account)
+    && /^\d{8,22}$/.test(String(post.post_id))
+    && post.post_url === `https://x.com/${normalizeHandle(post.account)}/status/${post.post_id}`
+    && shouldNotifyPost(post) && String(post.summary || "").trim().length > 0
+    && Number.isFinite(created) && created <= at && at < created + PUSH_WINDOW_MS;
+}
+
+export function buildTrustedPush(post) {
+  const id = String(post.post_id);
+  const subject = `https://www.dkgswarm.com/ka/collective-push-x-${id}`;
+  const target = `https://x.com/i/status/${id}`;
+  const issuedAt = new Date(Date.parse(post.created_at)).toISOString();
+  const expiresAt = new Date(Date.parse(post.created_at) + PUSH_WINDOW_MS).toISOString();
+  return { name: `collective-push-x-${id}`, subject, target, expiresAt, quads: [
+    { subject, predicate: RDF_TYPE, object: `${CURATOR_NS}CollectivePush` },
+    { subject, predicate: `${CURATOR_NS}targetPost`, object: target },
+    { subject, predicate: `${CURATOR_NS}publisher`, object: lit(post.account) },
+    { subject, predicate: `${CURATOR_NS}sourceTier`, object: lit("trusted-source-direct") },
+    { subject, predicate: `${CURATOR_NS}claimStatus`, object: lit("coordination request; claims require independent verification") },
+    { subject, predicate: `${CURATOR_NS}proposedAngle`, object: lit(`Discuss ${post.account} post in your own voice; verify claims independently`) },
+    { subject, predicate: "http://www.w3.org/2000/01/rdf-schema#comment", object: lit(post.summary) },
+    { subject, predicate: `${SCHEMA}identifier`, object: lit(id) },
+    { subject, predicate: `${SCHEMA}dateCreated`, object: lit(issuedAt) },
+    { subject, predicate: `${SCHEMA}expires`, object: lit(expiresAt) },
+  ] };
+}
+
+function assetIdentity(name) {
+  const raw = /^raw-x-post-(\d+)$/.exec(name);
+  if (raw) return { subject: `https://x.com/i/status/${raw[1]}`, type: `${SCHEMA}SocialMediaPosting` };
+  const derived = /^x-insight-(\d+)$/.exec(name);
+  if (derived) return { subject: `${NS}classification/${derived[1]}`, type: `${NS}Classification` };
+  const push = /^collective-push-x-(\d+)$/.exec(name);
+  if (push) return { subject: `https://www.dkgswarm.com/ka/${name}`, type: `${CURATOR_NS}CollectivePush` };
+  return null;
 }
 
 function loadToken() {
@@ -139,6 +187,7 @@ export function classifyPost(post, officialAccounts = [], options = {}) {
   const strongSignals = [
     [/(^|\W)\$trac\b/i, "$TRAC"],
     [/@origin_trail\b/i, "@origin_trail"],
+    [/@origintraildev\b/i, "@origintraildev"],
     [/@umanitek\b/i, "@umanitek"],
     [/\bumanitek\b/i, "Umanitek"],
     [/@branar[a]?kic\b/i, "@BranaRakic"],
@@ -157,7 +206,7 @@ export function classifyPost(post, officialAccounts = [], options = {}) {
   for (const [pattern, label] of strongSignals) if (pattern.test(text)) evidence.push(label);
   const contextualDkg = /\bdkg\b/i.test(text) && /(origintrail|knowledge graph|knowledge asset|verifiable|neuroweb|trac|paranet|umanitek)/i.test(text);
   if (contextualDkg) evidence.push("contextual DKG");
-  const ecosystemContext = /(origintrail|\$trac|@origin_trail|umanitek|neuroweb|decentralized knowledge graph)/i.test(text);
+  const ecosystemContext = /(origintrail|\$trac|@origin_trail|@origintraildev|umanitek|neuroweb|decentralized knowledge graph)/i.test(text);
   const adoptionContext = /(gs1|scan|sbb|rail|supply chain|digital product passport|trusted ai|verifiable ai|decentralized ai|provenance|real world adoption|network revenue|staking|delegat(?:e|ion|ing))/i.test(text);
   if (ecosystemContext && adoptionContext) evidence.push("ecosystem adoption context");
   if (official) evidence.unshift(`official account @${normalizeHandle(post.account)}`);
@@ -191,6 +240,9 @@ export function classifyPost(post, officialAccounts = [], options = {}) {
     (evidence.length === 1 && evidence[0] === "$TRAC") ||
     (/\b(?:price target|buy now|airdrop|giveaway)\b/i.test(text) && evidence.length < 3));
   if (thinDiscovery) { category = "unrelated"; confidence = 0; score = 0; }
+  // Support watches such as @CredibleCrypto post on many topics. Keep only OriginTrail, Umanitek, or TRAC.
+  const offTopicSupport = sourceTier === "ecosystem-account" && !ecosystemContext && !evidence.includes("$TRAC");
+  if (offTopicSupport) { category = "unrelated"; confidence = 0; score = 0; }
   return {
     relevant: category !== "unrelated",
     category,
@@ -199,7 +251,7 @@ export function classifyPost(post, officialAccounts = [], options = {}) {
     score,
     sourceTier,
     searchTier: options.searchTier || null,
-    rejectionReason: category === "unrelated" ? (ambiguousOnly ? "ambiguous-keyword-only" : thinDiscovery ? "thin-discovery" : "no-ecosystem-signal") : "",
+    rejectionReason: category === "unrelated" ? (offTopicSupport ? "off-topic-support" : ambiguousOnly ? "ambiguous-keyword-only" : thinDiscovery ? "thin-discovery" : "no-ecosystem-signal") : "",
     evidenceLevel: official ? "primary-source-self-report" : category === "ecosystem-signal" ? "source-observation" : "none",
     relationships: relationships(text),
   };
@@ -249,6 +301,53 @@ export function buildAssets(post, classification, observedAt = now()) {
   return { raw: { name: rawName, quads: raw }, derived: { name: insightName, quads: derived }, postUri, analysisUri };
 }
 
+export function matchesDerivedQuads(body, expected) {
+  const bindings = body?.result?.type === "bindings" ? body.result.bindings : null;
+  if (!Array.isArray(bindings) || bindings.length === 0 || bindings.length > 100 || expected.length > 100) return false;
+  // Oxigraph drops trailing zeros in xsd:dateTime fractions: 11.380Z comes back 11.38Z.
+  const canonicalDateTime = (value) => {
+    const match = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+    if (!match) return value;
+    const fraction = match[2]?.replace(/0+$/, "");
+    return `${match[1]}${fraction ? `.${fraction}` : ""}${match[3]}`;
+  };
+  const literalKey = (datatype, lexical) => {
+    const type = datatype === `${XSD}string` ? "" : datatype || "";
+    return `literal:${type}:${type === `${XSD}dateTime` ? canonicalDateTime(lexical) : lexical}`;
+  };
+  const expectedTerm = (value) => {
+    if (typeof value !== "string") return null;
+    if (!value.startsWith('"')) return /^https?:\/\/[^\s<>"\\]+$/.test(value) ? `uri:${value}` : null;
+    const match = /^("(?:\\.|[^"\\])*")(?:\^\^<([^>]+)>)?$/.exec(value);
+    if (!match || match[2] && !/^https?:\/\/[^\s<>"\\]+$/.test(match[2])) return null;
+    try { return literalKey(match[2], JSON.parse(match[1])); }
+    catch { return null; }
+  };
+  const term = (value) => {
+    if (typeof value === "string") return expectedTerm(value);
+    if (!value || typeof value !== "object" || typeof value.value !== "string") return null;
+    if (value.type === "uri") {
+      if (value.datatype !== undefined || value["xml:lang"] !== undefined || value.lang !== undefined) return null;
+      const normalized = expectedTerm(value.value);
+      return normalized?.startsWith("uri:") ? normalized : null;
+    }
+    if (value.type !== "literal" && value.type !== "typed-literal") return null;
+    if (value["xml:lang"] !== undefined || value.lang !== undefined || value.type === "typed-literal" && !value.datatype
+      || value.datatype !== undefined && (typeof value.datatype !== "string" || !/^https?:\/\/[^\s<>"\\]+$/.test(value.datatype))) return null;
+    return literalKey(value.datatype, value.value);
+  };
+  const key = (subject, predicate, object) => JSON.stringify([subject, predicate, object]);
+  const wanted = new Set(expected.map(({ subject, predicate, object }) => key(`uri:${subject}`, `uri:${predicate}`, expectedTerm(object))));
+  if (wanted.size !== expected.length || bindings.length !== wanted.size || expected.some(({ object }) => expectedTerm(object) === null)) return false;
+  const seen = new Set();
+  for (const row of bindings) {
+    const value = key(term(row?.s), term(row?.p), term(row?.o));
+    if (!wanted.has(value) || seen.has(value)) return false;
+    seen.add(value);
+  }
+  return seen.size === wanted.size;
+}
+
 export function openStore(dbPath, legacySeenPath, detectionsPath) {
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -263,8 +362,9 @@ export function openStore(dbPath, legacySeenPath, detectionsPath) {
       summary TEXT NOT NULL,
       created_at TEXT,
       is_reply INTEGER NOT NULL DEFAULT 0,
-      is_rt INTEGER NOT NULL DEFAULT 0,
-      observed_at TEXT NOT NULL,
+       is_rt INTEGER NOT NULL DEFAULT 0,
+       author_verified INTEGER NOT NULL DEFAULT 0,
+       observed_at TEXT NOT NULL,
       classification_json TEXT NOT NULL,
       raw_asset TEXT,
       insight_asset TEXT
@@ -304,6 +404,9 @@ export function openStore(dbPath, legacySeenPath, detectionsPath) {
     CREATE INDEX IF NOT EXISTS deliveries_due ON deliveries(status, next_attempt_at);
   `);
 
+  if (!db.prepare("PRAGMA table_info(observations)").all().some((column) => column.name === "author_verified")) {
+    db.exec("ALTER TABLE observations ADD COLUMN author_verified INTEGER NOT NULL DEFAULT 0");
+  }
   const count = db.prepare("SELECT COUNT(*) AS count FROM observations").get().count;
   if (count === 0 && fs.existsSync(legacySeenPath)) {
     const insertObservation = db.prepare(`INSERT OR IGNORE INTO observations
@@ -344,20 +447,21 @@ export function openStore(dbPath, legacySeenPath, detectionsPath) {
   db.exec(`UPDATE observations SET
     raw_asset = COALESCE(raw_asset, 'raw-x-post-' || post_id),
     insight_asset = COALESCE(insight_asset, 'x-insight-' || post_id)`);
-  // Legacy queue may contain SWM pushes. Retire these before any retry can share.
-  db.exec(`UPDATE deliveries SET status = 'skipped', completed_at = datetime('now'), last_error = 'curator-only SWM promotion'
-    WHERE stage IN ('collective-push-dkg', 'webhook') AND status = 'pending'`);
+  db.exec(`UPDATE deliveries SET status = 'skipped', completed_at = datetime('now'), last_error = 'retired webhook'
+    WHERE stage = 'webhook' AND status = 'pending'`);
+  db.exec(`UPDATE deliveries SET status = 'skipped', completed_at = datetime('now'), last_error = 'legacy push not verified'
+    WHERE stage = 'collective-push-dkg' AND status = 'pending'`);
+  db.prepare(`UPDATE deliveries SET status = 'quarantined', completed_at = NULL,
+    last_error = substr(COALESCE(last_error, 'retry limit reached') || '; manual DKG lifecycle review required (no automatic SWM share)', 1, 1000)
+    WHERE stage IN ('raw-dkg', 'derived-dkg') AND status = 'pending'
+      AND (attempts >= ? OR lower(COALESCE(last_error, '')) LIKE '%unfinished promote%'
+         OR lower(COALESCE(last_error, '')) LIKE '%not readable as sealed%')`).run(MAX_DKG_ATTEMPTS);
   return db;
 }
 
 export function createWatcher({ fanout, log = console, getAdditionalAccounts = () => [] }) {
-  const accounts = uniqueHandles([
-    ...(process.env.WATCH_ACCOUNTS || "origin_trail,umanitek").split(",").map(normalizeHandle).filter(Boolean),
-    "origin_trail", "umanitek",
-  ]);
-  const trustedAccounts = uniqueHandles(
-    (process.env.WATCH_TRUSTED_ACCOUNTS || "BranaRakic").split(",").map(normalizeHandle).filter(Boolean),
-  );
+  const accounts = uniqueHandles(OFFICIAL_ACCOUNTS);
+  const trustedAccounts = [...TRUSTED_PUSH_ACCOUNTS];
   const configuredSupportAccounts = uniqueHandles(
     (process.env.WATCH_SUPPORT_ACCOUNTS || "CredibleCrypto").split(",").map(normalizeHandle).filter(Boolean),
   );
@@ -516,12 +620,17 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     return id;
   }
 
-  function tweetFromResult(result, fallbackScreen = "") {
+  function tweetFromResult(result, fallbackScreen = "", expectedUserId = "") {
     const legacy = result?.legacy || result?.tweet?.legacy || {};
     const id = String(result?.rest_id || result?.tweet?.rest_id || legacy.id_str || "");
     const core = result?.core?.user_results?.result || result?.tweet?.core?.user_results?.result || {};
-    const screen = core?.legacy?.screen_name || core?.core?.screen_name || fallbackScreen;
+    const authorScreen = core?.legacy?.screen_name || core?.core?.screen_name;
+    const screen = authorScreen || fallbackScreen;
     if (!id || !legacy.full_text || !screen) return null;
+    if (expectedUserId && (!core?.rest_id || String(core.rest_id) !== String(expectedUserId)
+      || !authorScreen || authorScreen.toLowerCase() !== fallbackScreen.toLowerCase()
+      || core?.legacy?.screen_name && core?.core?.screen_name
+        && core.legacy.screen_name.toLowerCase() !== core.core.screen_name.toLowerCase())) return null;
     return {
       post_id: id,
       account: `@${screen}`,
@@ -529,37 +638,62 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
       summary: legacy.full_text.replace(/\s+/g, " ").trim(),
       created_at: legacy.created_at || "",
       isReply: Boolean(legacy.in_reply_to_status_id_str),
-      isRt: Boolean(result?.retweeted_status_result) || /^RT @/i.test(legacy.full_text),
+       isRt: Boolean(result?.retweeted_status_result || legacy.retweeted_status_id_str) || /^RT @/i.test(legacy.full_text),
+       authorVerified: Boolean(core?.rest_id && authorScreen),
     };
   }
 
-  function parseTweets(data, screen) {
+  function parseTweets(data, screen, uid) {
     const instructions = data?.data?.user?.result?.timeline_v2?.timeline?.instructions || [];
     const posts = [];
+    let cursor = "";
     for (const instruction of instructions) {
       for (const entry of instruction.entries || []) {
+        if (entry?.content?.cursorType === "Bottom" && typeof entry.content.value === "string") cursor = entry.content.value;
         const result = entry?.content?.itemContent?.tweet_results?.result;
         if (!result) continue;
-        const post = tweetFromResult(result, screen);
-        if (post) posts.push(post);
+        const post = tweetFromResult(result, screen, uid);
+        if (post && normalizeHandle(post.account).toLowerCase() === screen.toLowerCase()) posts.push(post);
       }
     }
-    return posts;
+    return { posts, cursor };
   }
 
   async function fetchAccount(screen, guest) {
     const uid = await userId(screen, guest);
-    let lastError;
-    for (const queryId of TWEETS_QUERIES) {
-      try {
-        const data = await gql(`${queryId}/UserTweets`, {
-          variables: { userId: uid, count: 12, includePromotedContent: false, withQuickPromoteEligibilityTweetFields: true, withVoice: true, withV2Timeline: true },
-          features: FEATURES,
-        }, guest);
-        return parseTweets(data, screen);
-      } catch (error) { lastError = error; }
+    const trusted = trustedAccounts.some((account) => account.toLowerCase() === screen.toLowerCase());
+    const posts = new Map();
+    const cursors = new Set();
+    const cutoff = Date.now() - PUSH_WINDOW_MS - 2 * 60000;
+    let cursor = "";
+    for (let page = 0; page < (trusted ? 3 : 1); page++) {
+      let lastError;
+      let result;
+      for (const queryId of TWEETS_QUERIES) {
+        try {
+          const data = await gql(`${queryId}/UserTweets`, {
+            variables: { userId: uid, count: 12, ...(cursor ? { cursor } : {}), includePromotedContent: false, withQuickPromoteEligibilityTweetFields: true, withVoice: true, withV2Timeline: true },
+            features: FEATURES,
+          }, guest);
+          result = parseTweets(data, screen, uid);
+          break;
+        } catch (error) { lastError = error; }
+      }
+      if (!result) throw lastError || new Error("UserTweets failed");
+      const newPosts = result.posts.filter((post) => !posts.has(post.post_id));
+      for (const post of newPosts) posts.set(post.post_id, post);
+      if (!trusted || !newPosts.length) break;
+      const timestamps = result.posts.map((post) => Date.parse(post.created_at));
+      if (timestamps.length && timestamps.every((timestamp) => Number.isFinite(timestamp) && timestamp < cutoff)) break;
+      if (!result.cursor) {
+        if (result.posts.length >= 12) throw new Error(`missing Bottom cursor for ${screen}`);
+        break;
+      }
+      if (cursors.has(result.cursor)) break;
+      cursors.add(result.cursor);
+      cursor = result.cursor;
     }
-    throw lastError || new Error("UserTweets failed");
+    return [...posts.values()];
   }
 
   function parseSearch(data) {
@@ -610,23 +744,27 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     throw lastError || new Error("SearchTimeline failed");
   }
 
-  function persist(post, kind, classification, queue = true, notify = queue) {
+  function persist(post, kind, classification, queue = true, trustedSource = false) {
     const observedAt = now();
     const assets = buildAssets(post, classification, observedAt);
     db.exec("BEGIN IMMEDIATE");
     try {
       const result = db.prepare(`INSERT OR IGNORE INTO observations
-        (post_id, account, kind, post_url, summary, created_at, is_reply, is_rt, observed_at, classification_json, raw_asset, insight_asset)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(post.post_id, post.account, kind, post.post_url, post.summary, post.created_at || "", post.isReply ? 1 : 0, post.isRt ? 1 : 0, observedAt, JSON.stringify(classification), assets.raw.name, assets.derived.name);
+         (post_id, account, kind, post_url, summary, created_at, is_reply, is_rt, author_verified, observed_at, classification_json, raw_asset, insight_asset)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+         .run(post.post_id, post.account, kind, post.post_url, post.summary, post.created_at || "", post.isReply ? 1 : 0, post.isRt ? 1 : 0, post.authorVerified ? 1 : 0, observedAt, JSON.stringify(classification), assets.raw.name, assets.derived.name);
       const old = result.changes ? null : db.prepare("SELECT classification_json FROM observations WHERE post_id = ?").get(post.post_id);
       const current = old ? JSON.parse(old.classification_json) : null;
       const priority = { official: 4, "approved-writer": 3, "swarm-member": 2, "ecosystem-account": 1, discovery: 0 };
       const upgrade = current && (priority[classification.sourceTier] ?? 0) > (priority[current.sourceTier] ?? 0);
-      if (upgrade) db.prepare(`UPDATE observations SET account = ?, kind = ?, post_url = ?, summary = ?, created_at = ?,
-        is_reply = ?, is_rt = ?, classification_json = ? WHERE post_id = ?`).run(post.account, kind, post.post_url, post.summary,
-        post.created_at || "", post.isReply ? 1 : 0, post.isRt ? 1 : 0, JSON.stringify(classification), post.post_id);
-      if (queue && (result.changes || upgrade)) {
+       if (upgrade || (trustedSource && post.authorVerified)) db.prepare(`UPDATE observations SET account = ?, kind = ?, post_url = ?, summary = ?, created_at = ?,
+         is_reply = ?, is_rt = ?, author_verified = ?, classification_json = ? WHERE post_id = ?`).run(post.account, kind, post.post_url, post.summary,
+         post.created_at || "", post.isReply ? 1 : 0, post.isRt ? 1 : 0, post.authorVerified ? 1 : 0, JSON.stringify(classification), post.post_id);
+       if (trustedSource && trustedPushEligible(post)) {
+         db.prepare("INSERT OR IGNORE INTO deliveries (post_id, stage, next_attempt_at) VALUES (?, 'trusted-push-dkg', ?)")
+           .run(post.post_id, observedAt);
+       }
+       if (queue && (result.changes || upgrade)) {
         const insert = db.prepare("INSERT OR IGNORE INTO deliveries (post_id, stage, next_attempt_at) VALUES (?, ?, ?)");
         for (const stage of ["raw-dkg", "derived-dkg"]) insert.run(post.post_id, stage, observedAt);
         if (upgrade) db.prepare(`UPDATE deliveries SET status = 'pending', next_attempt_at = ?, completed_at = NULL
@@ -651,12 +789,11 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      // Previously shared assets cannot be reopened as WM drafts. Recover
-      // legacy successes without sharing any new asset.
-      if (response.status === 409 || /not an active Working Memory draft/i.test(body.error || body.message || "")) {
-        if (await assetIsShared(asset.name)) return { status: "swm-shared", recovered: true };
-        if (await assetExistsInWorkingMemory(asset.name)) return { status: "wm-draft", recovered: true };
-      }
+       if ((response.status === 409 || /not an active Working Memory draft/i.test(body.error || body.message || ""))
+         && asset.name.startsWith("collective-push-x-")) {
+         if (await assetIsShared(asset.name)) return { status: "swm-shared", recovered: true };
+         if (await assetExistsInWorkingMemory(asset.name)) return { status: "wm-draft", recovered: true };
+       }
       throw new Error(`DKG ${response.status}: ${body.error || body.message || "asset write failed"}`);
     }
     if (!isWorkingAsset(body) && !isSharedAsset(body)) throw new Error(`DKG asset ${asset.name} write not confirmed`);
@@ -667,6 +804,8 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
   }
 
   async function assetExistsInView(name, view) {
+    const identity = assetIdentity(name);
+    if (!identity) throw new Error(`unknown DKG asset ${name}`);
     const token = loadToken();
     if (!token) throw new Error("no dkg token");
     const url = new URL(`${dkgApi}/api/knowledge-assets/${encodeURIComponent(name)}`);
@@ -677,8 +816,6 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
       const body = await response.json().catch(() => ({}));
       throw new Error(`DKG ${response.status}: ${body.error || body.message || "asset lookup failed"}`);
     }
-    const descriptor = await response.json().catch(() => ({}));
-    if (!isSafeGraphUri(descriptor.assertionGraph)) return false;
 
     const query = await fetch(`${dkgApi}/api/query`, {
       method: "POST",
@@ -686,7 +823,7 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
       body: JSON.stringify({
         contextGraphId: graphId,
         view,
-        sparql: `ASK { GRAPH <${descriptor.assertionGraph}> { ?s ?p ?o } }`,
+        sparql: `ASK { <${identity.subject}> <${RDF_TYPE}> <${identity.type}> }`,
       }),
       signal: AbortSignal.timeout(12000),
     });
@@ -698,20 +835,74 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
   const assetIsShared = (name) => assetExistsInView(name, "shared-working-memory");
   const assetExistsInWorkingMemory = (name) => assetExistsInView(name, "working-memory");
 
+   async function assetContentMatches(postId, stage) {
+     if (stage !== "raw-dkg" && stage !== "derived-dkg") return false;
+     const data = queuedPost(postId);
+     if (!data || !/^\d+$/.test(String(data.post.post_id))) return false;
+     let expected;
+     try { expected = buildAssets(data.post, data.classification, data.observedAt)[stage === "raw-dkg" ? "raw" : "derived"].quads; }
+     catch { return false; }
+      // Full rdf:type IRI inside VALUES is rejected by the scoped-query rewriter
+      // ("unable to locate a graph-scopable WHERE block"). Prefixed rdf:type is accepted.
+      const pairs = [...new Set(expected.map(({ subject, predicate }) =>
+        `<${subject}> ${predicate === RDF_TYPE ? "rdf:type" : `<${predicate}>`}`))];
+      if (!pairs.length || expected.length > 100 || pairs.some((pair) => !/^<https?:\/\/[^<>\s]+> (?:rdf:type|<https?:\/\/[^<>\s]+>)$/.test(pair))) return false;
+      const token = loadToken();
+      if (!token) return false;
+      for (const view of ["working-memory", "shared-working-memory"]) {
+        try {
+          const response = await fetch(`${dkgApi}/api/query`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ contextGraphId: graphId, view,
+              sparql: `PREFIX rdf: <${RDF_TYPE.slice(0, RDF_TYPE.lastIndexOf("#") + 1)}> SELECT DISTINCT ?s ?p ?o WHERE { VALUES (?s ?p) { ${pairs.map((pair) => `(${pair})`).join(" ")} } ?s ?p ?o } LIMIT 101` }),
+           signal: AbortSignal.timeout(12000),
+         });
+         if (response.ok && matchesDerivedQuads(await response.json(), expected)) return true;
+       } catch {}
+     }
+     return false;
+   }
+
   async function reconcileDkgDeliveries() {
     if (state.reconcileRunning) return;
     state.reconcileRunning = true;
     try {
-      const completed = db.prepare(`SELECT d.post_id, d.stage, o.raw_asset, o.insight_asset
+      const verifiedAt = db.prepare("SELECT value FROM runtime_metadata WHERE key = 'dkg-reconcile-verified-at'").get()?.value || "";
+      const completed = db.prepare(`SELECT d.post_id, d.stage, d.completed_at, o.raw_asset, o.insight_asset
         FROM deliveries d JOIN observations o ON o.post_id = d.post_id
-        WHERE d.status = 'completed' AND d.stage IN ('raw-dkg', 'derived-dkg')`).all();
+        WHERE d.status = 'completed' AND d.stage IN ('raw-dkg', 'derived-dkg')
+          AND (? = '' OR d.completed_at > ?)
+        ORDER BY d.completed_at LIMIT 40`).all(verifiedAt, verifiedAt);
+      let cursor = verifiedAt;
       for (const row of completed) {
         const name = row.stage === "raw-dkg" ? row.raw_asset : row.insight_asset;
-        if (!name || await assetExistsInWorkingMemory(name) || await assetIsShared(name)) continue;
-        db.prepare(`UPDATE deliveries SET status = 'pending', next_attempt_at = ?, completed_at = NULL,
-          last_error = 'asset missing during WM reconciliation' WHERE post_id = ? AND stage = ?`)
-          .run(now(), row.post_id, row.stage);
-        log.error?.("watcher reconciliation", row.post_id, row.stage, "missing; queued retry");
+        if (name && !await assetExistsInWorkingMemory(name) && !await assetIsShared(name)) {
+          db.prepare(`UPDATE deliveries SET status = 'pending', next_attempt_at = ?, completed_at = NULL,
+            last_error = 'asset missing during WM reconciliation' WHERE post_id = ? AND stage = ?`)
+            .run(now(), row.post_id, row.stage);
+          log.error?.("watcher reconciliation", row.post_id, row.stage, "missing; queued retry");
+          break;
+        }
+        if (row.completed_at > cursor) cursor = row.completed_at;
+      }
+      if (cursor > verifiedAt) {
+        db.prepare(`INSERT INTO runtime_metadata (key, value, refreshed_at) VALUES ('dkg-reconcile-verified-at', ?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, refreshed_at = excluded.refreshed_at`).run(cursor, now());
+      }
+      const candidates = db.prepare(`SELECT d.post_id, d.stage FROM deliveries d
+        WHERE d.stage IN ('raw-dkg', 'derived-dkg') AND d.status = 'quarantined'
+          AND (d.last_error LIKE '%WM/SWM content not exactly verified%'
+            OR d.last_error LIKE '%not an active Working Memory draft%')
+        ORDER BY d.next_attempt_at LIMIT 40`).all();
+      for (const { post_id, stage } of candidates) {
+        if (await assetContentMatches(post_id, stage)) {
+          db.prepare(`UPDATE deliveries SET status = 'completed', completed_at = ?, last_error = NULL
+            WHERE post_id = ? AND stage = ? AND status = 'quarantined'`).run(now(), post_id, stage);
+          continue;
+        }
+        db.prepare(`UPDATE deliveries SET next_attempt_at = ? WHERE post_id = ? AND stage = ? AND status = 'quarantined'`)
+          .run(new Date(Date.now() + reconcileMs).toISOString(), post_id, stage);
       }
       state.lastDkgReconcile = now();
     } catch (error) {
@@ -730,17 +921,63 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     const row = db.prepare("SELECT * FROM observations WHERE post_id = ?").get(id);
     if (!row) return null;
     return {
-      post: { post_id: row.post_id, account: row.account, post_url: row.post_url, summary: row.summary, created_at: row.created_at, isReply: !!row.is_reply, isRt: !!row.is_rt },
+       post: { post_id: row.post_id, account: row.account, post_url: row.post_url, summary: row.summary, created_at: row.created_at, isReply: !!row.is_reply, isRt: !!row.is_rt, authorVerified: !!row.author_verified },
       kind: row.kind,
       classification: JSON.parse(row.classification_json || "{}"),
       observedAt: row.observed_at,
     };
   }
 
+  async function trustedPushShared(push) {
+    const token = loadToken();
+    if (!token) throw new Error("no dkg token");
+    const response = await fetch(`${dkgApi}/api/query`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ contextGraphId: graphId, view: "shared-working-memory",
+        sparql: `ASK { <${push.subject}> <${CURATOR_NS}targetPost> <${push.target}> }` }),
+      signal: AbortSignal.timeout(12000),
+    });
+    if (!response.ok) throw new Error(`DKG shared push lookup ${response.status}`);
+    return hasQueryContent(await response.json());
+  }
+
+  async function publishTrustedPush(post) {
+    const push = buildTrustedPush(post);
+    if (await trustedPushShared(push)) return;
+    if (!trustedPushEligible(post)) return;
+    if (!await assetExistsInWorkingMemory(push.name)) {
+      try { await writeAsset(push); }
+      catch (error) {
+        if (!await trustedPushShared(push) && !await assetExistsInWorkingMemory(push.name)) throw error;
+      }
+    }
+    if (await trustedPushShared(push)) return;
+    const token = loadToken();
+    if (!token) throw new Error("no dkg token");
+    if (!trustedPushEligible(post)) return;
+    const response = await fetch(`${dkgApi}/api/knowledge-assets/${push.name}/swm/share`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ contextGraphId: graphId }), signal: AbortSignal.timeout(20000),
+    });
+    if (!await trustedPushShared(push)) throw new Error(`DKG push share not queryable (${response.status})`);
+  }
+
+  function quarantineDelivery(id, stage, attempts, reason) {
+    db.prepare(`UPDATE deliveries SET status = 'quarantined', attempts = ?, completed_at = NULL, last_error = ?
+      WHERE post_id = ? AND stage = ?`).run(attempts, String(reason).slice(0, 1000), id, stage);
+  }
+
   function retryDelivery(id, stage, attempts, error) {
+    const reason = String(error);
+    if ((stage === 'raw-dkg' || stage === 'derived-dkg') &&
+      (attempts >= MAX_DKG_ATTEMPTS || /unfinished promote|not readable as sealed/i.test(reason))) {
+      quarantineDelivery(id, stage, attempts, `${reason}; manual DKG lifecycle review required (no automatic SWM share)`);
+      return;
+    }
     const delay = Math.min(3600000, 15000 * 2 ** Math.min(attempts, 8));
     db.prepare(`UPDATE deliveries SET status = 'pending', attempts = ?, next_attempt_at = ?, last_error = ? WHERE post_id = ? AND stage = ?`)
-      .run(attempts, new Date(Date.now() + delay).toISOString(), String(error).slice(0, 1000), id, stage);
+      .run(attempts, new Date(Date.now() + delay).toISOString(), reason.slice(0, 1000), id, stage);
   }
 
   function completeDelivery(id, stage) {
@@ -751,16 +988,28 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     if (state.queueRunning) return;
     state.queueRunning = true;
     try {
-      const due = db.prepare("SELECT * FROM deliveries WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY next_attempt_at LIMIT 30").all(now());
+      const due = db.prepare("SELECT * FROM deliveries WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY CASE WHEN stage = 'trusted-push-dkg' THEN 0 ELSE 1 END, next_attempt_at LIMIT 30").all(now());
       for (const job of due) {
         const data = queuedPost(job.post_id);
         if (!data) continue;
-        const assets = buildAssets(data.post, data.classification, data.observedAt);
-        try {
+         const assets = buildAssets(data.post, data.classification, data.observedAt);
+         if (job.stage === "trusted-push-dkg" && !trustedPushEligible(data.post)) {
+           db.prepare("UPDATE deliveries SET status = 'skipped', completed_at = ?, last_error = 'expired or unverified source' WHERE post_id = ? AND stage = ?")
+             .run(now(), job.post_id, job.stage);
+           continue;
+         }
+         try {
           let outcome;
-          if (job.stage === "raw-dkg") outcome = await writeAsset(assets.raw);
-          if (job.stage === "derived-dkg") outcome = await writeAsset(assets.derived);
-          if (job.stage === "collective-push-dkg" || job.stage === "webhook") {
+           if (job.stage === "raw-dkg" || job.stage === "derived-dkg") {
+             if (await assetContentMatches(job.post_id, job.stage)) {
+               completeDelivery(job.post_id, job.stage);
+               continue;
+             }
+             outcome = await writeAsset(job.stage === "raw-dkg" ? assets.raw : assets.derived);
+             if (!await assetContentMatches(job.post_id, job.stage)) throw new Error(`${job.stage} WM/SWM content not exactly verified`);
+           }
+           if (job.stage === "trusted-push-dkg") outcome = await publishTrustedPush(data.post);
+           if (job.stage === "collective-push-dkg" || job.stage === "webhook") {
             db.prepare("UPDATE deliveries SET status = 'skipped', completed_at = ? WHERE post_id = ? AND stage = ?").run(now(), job.post_id, job.stage);
             continue;
           }
@@ -797,8 +1046,8 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
             if (shouldSkipPost(post, tier, skipReplies, skipRts)) continue;
             const classification = classifyPost(post, accounts, { sourceTier: tier });
             const historicalExpandedActivity = collectsAll && (post.isReply || post.isRt) && !activitySeeded;
-            const queue = Boolean(seeded && classification.relevant && !historicalExpandedActivity);
-            persist(post, kind, classification, queue, queue && shouldNotifyPost(post));
+           const queue = Boolean(seeded && classification.relevant && !historicalExpandedActivity);
+           persist(post, kind, classification, queue, trustedAccounts.some((item) => item.toLowerCase() === key));
           }
           db.prepare("INSERT OR IGNORE INTO seeded_accounts (account, seeded_at) VALUES (?, ?)").run(screen.toLowerCase(), now());
           if (collectsAll) db.prepare("INSERT OR IGNORE INTO seeded_account_activity (account, seeded_at) VALUES (?, ?)").run(screen.toLowerCase(), now());
@@ -857,13 +1106,21 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     },
     status() {
       const queue = db.prepare("SELECT stage, status, COUNT(*) AS count FROM deliveries GROUP BY stage, status").all();
+      const retryingDkg = db.prepare(`SELECT COUNT(*) AS count FROM deliveries
+        WHERE stage IN ('raw-dkg', 'derived-dkg') AND status = 'pending' AND attempts > 0`).get().count;
+      const dkgFailures = db.prepare(`SELECT d.post_id, d.stage, d.attempts, d.last_error, o.raw_asset, o.insight_asset
+        FROM deliveries d JOIN observations o ON o.post_id = d.post_id
+        WHERE d.status = 'quarantined' AND d.stage IN ('raw-dkg', 'derived-dkg')
+        ORDER BY d.attempts DESC`).all().map(({ post_id, stage, attempts, last_error, raw_asset, insight_asset }) => ({
+          post_id, stage, attempts, last_error, asset: stage === 'raw-dkg' ? raw_asset : insight_asset,
+        }));
       return {
         accounts, trustedAccounts, supportAccounts: supportAccounts(), monitoredAccounts: monitoredAccounts(), searchQueries, searchEvery, searchReady,
         pollMs, retryMs, reconcileMs, skipRts, skipReplies,
         lastPoll: state.lastPoll, lastSearch: state.lastSearch, lastError: state.lastError, cooldownUntil: state.cooldownUntil, lastDkgReconcile: state.lastDkgReconcile,
         seeded: db.prepare("SELECT COUNT(*) AS count FROM seeded_accounts").get().count > 0,
         seenCount: db.prepare("SELECT COUNT(*) AS count FROM observations").get().count,
-        queue, detections: state.detections,
+        queue, retryingDkg, dkgFailures, detections: state.detections,
       };
     },
     async test(fields) {

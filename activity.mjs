@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 
-const allowedTools = new Set(["graph_info", "query_graph", "search_graph", "get_swarm_policy", "write_working_memory", "enable_writer_access", "share_to_swm", "list_contexts", "join_context"]);
+const allowedTools = new Set(["graph_info", "query_graph", "search_graph", "get_posting_context", "get_swarm_policy", "write_working_memory", "enable_writer_access", "share_to_swm", "list_contexts", "join_context", "list_collective_pushes", "get_network_stats"]);
 
 export function createActivity(path = process.env.DKG_MCP_ACTIVITY_STORE || "/root/dkg-public-mcp/data/activity.sqlite") {
   const db = new DatabaseSync(path);
@@ -22,7 +22,7 @@ export function createActivity(path = process.env.DKG_MCP_ACTIVITY_STORE || "/ro
     snapshot(at = Date.now()) {
       if (cached && at < cachedUntil) return cached;
       const totals = db.prepare(`SELECT COUNT(DISTINCT installation) AS connectedInstallations, COUNT(*) AS toolCalls,
-        SUM(CASE WHEN tool IN ('query_graph','search_graph') THEN 1 ELSE 0 END) AS queries,
+        SUM(CASE WHEN tool IN ('query_graph','search_graph','get_posting_context') THEN 1 ELSE 0 END) AS queries,
         SUM(CASE WHEN tool = 'write_working_memory' THEN 1 ELSE 0 END) AS contributionAttempts
         FROM activity`).get();
       cached = { period: "since tracking began", updatedAt: new Date(at).toISOString(),
