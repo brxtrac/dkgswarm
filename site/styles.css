@@ -913,6 +913,18 @@ footer a { font-family: 'IBM Plex Mono', monospace; font-size: 0.82rem; }
     background: var(--green);
     box-shadow: 0 0 14px rgba(124, 255, 107, 0.9);
 }
+.status-dot[data-level="yellow"] {
+    background: var(--yellow);
+    box-shadow: 0 0 14px rgba(255, 207, 92, 0.9);
+}
+.status-dot[data-level="red"] {
+    background: #ff5a45;
+    box-shadow: 0 0 14px rgba(255, 90, 69, 0.9);
+}
+.context-kicker[data-level="yellow"],
+.profile-status[data-level="yellow"] { color: var(--yellow); }
+.context-kicker[data-level="red"],
+.profile-status[data-level="red"] { color: #ff5a45; }
 
 .context-hero__lede { max-width: 680px; color: #d1d9d5; font-size: clamp(1.18rem, 2vw, 1.45rem) !important; }
 .context-manifesto { margin: 22px 0; color: var(--yellow); font-size: 1.05rem !important; font-weight: 600; }
@@ -928,7 +940,7 @@ footer a { font-family: 'IBM Plex Mono', monospace; font-size: 0.82rem; }
 }
 .swarm-signal--contexts { margin: 0 0 28px 0; max-width: none; }
 .context-site .swarm-signal__heading { margin: 0 0 14px; color: var(--blue); font: 600 0.73rem 'IBM Plex Mono', monospace; letter-spacing: 0.08em; text-transform: uppercase; }
-.swarm-signal__figures { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.swarm-signal__figures { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .swarm-signal__figures div { border-top: 1px solid #35434a; padding-top: 12px; }
 .swarm-signal__figures strong { display: block; color: var(--green); font: 600 clamp(1.6rem, 3vw, 2.4rem) 'IBM Plex Mono', monospace; line-height: 1.15; }
 .swarm-signal__figures span { display: block; margin-top: 6px; color: #d1d9d5; font: 500 0.78rem 'IBM Plex Sans', sans-serif; }
@@ -1017,7 +1029,7 @@ footer a { font-family: 'IBM Plex Mono', monospace; font-size: 0.82rem; }
 
 @media (max-width: 640px) {
     .swarm-signal { padding: 16px; }
-    .swarm-signal__figures { gap: 9px; }
+    .swarm-signal__figures { grid-template-columns: 1fr 1fr; gap: 9px; }
     .swarm-signal__figures strong { font-size: clamp(1.15rem, 6vw, 1.7rem); }
     .swarm-signal__figures span { font-size: 0.7rem; }
     .context-site main { padding: 12px 12px 48px; }

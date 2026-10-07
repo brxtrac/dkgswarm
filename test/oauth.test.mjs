@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { createStore, resolveRefreshScopes, validateAuthorizationRequest } from "../oauth.mjs";
 
 test("reader refresh cannot escalate to write", () => {
@@ -69,6 +71,30 @@ test("writer upgrade reaches rotated tokens when refresh preserves family", (t) 
   assert.deepEqual(store.getToken("new-access").scopes, ["dkg:read", "dkg:write"]);
   assert.deepEqual(store.getToken("new-refresh").scopes, ["dkg:read", "dkg:write"]);
   assert.equal(store.getToken("new-refresh").writerGrantId, "grant-a");
+});
+
+test("dynamic registration allows Muse callback host", () => {
+  const oauthPath = fileURLToPath(new URL("../oauth.mjs", import.meta.url));
+  const script = `
+    import { isRedirectAllowed } from ${JSON.stringify(oauthPath)};
+    const checks = {
+      muse: isRedirectAllowed("https://agent.meta.ai/api/hatch/oauth/callback"),
+      sibling: isRedirectAllowed("https://evil.meta.ai/api/hatch/oauth/callback"),
+      suffix: isRedirectAllowed("https://agent.meta.ai.evil.example/callback"),
+    };
+    if (!checks.muse || checks.sibling || checks.suffix) {
+      console.error(JSON.stringify(checks));
+      process.exit(1);
+    }
+  `;
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+    env: {
+      ...process.env,
+      DKG_MCP_OAUTH_REDIRECT_HOSTS: "grok.com,x.ai,cursor.com,localhost,agent.meta.ai",
+    },
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
 test("authorization requires reader-only PKCE request for exact resource", () => {

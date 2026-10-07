@@ -55,12 +55,19 @@ function reviewed(kind) {
   finally { store.close(); }
 }
 
-function intake() {
-  if (!fs.existsSync(intakePath)) return [];
-  const store = new DatabaseSync(intakePath);
-  try { return store.prepare("SELECT name, queued_at FROM drafts WHERE reviewed_at IS NULL ORDER BY queued_at LIMIT 10").all(); }
-  finally { store.close(); }
+export function intake(name, filename = intakePath) {
+  if (!fs.existsSync(filename)) return name ? undefined : [];
+  const store = new DatabaseSync(filename);
+  try {
+    store.exec("PRAGMA busy_timeout = 5000");
+    return name
+      ? store.prepare("SELECT name, queued_at FROM drafts WHERE reviewed_at IS NULL AND name = ?").get(name)
+      : store.prepare("SELECT name, queued_at FROM drafts WHERE reviewed_at IS NULL AND lower(name) NOT LIKE '%collective-push%' AND lower(name) NOT GLOB '*collective_push*' AND lower(name) NOT LIKE '%collectivepush%' ORDER BY queued_at LIMIT 40").all();
+  } finally { store.close(); }
 }
+
+export const normalizeDraftName = (name) => String(name).replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80);
+export const isCollectivePush = (name) => /collective[-_]?push/i.test(normalizeDraftName(name));
 
 export function canonicalUrl(value) {
   const url = new URL(value);
@@ -79,7 +86,7 @@ export function canonicalUrl(value) {
 }
 
 export function validateCollectivePush({ name, url, postId, issuedAt, expiresAt, publisher, angle, text }, at = Date.now()) {
-  if (!/^collective[-_]?push[-_]/i.test(name || "")) throw new Error("not a collective push");
+  if (!isCollectivePush(name || "")) throw new Error("not a collective push");
   if (!/^\d{8,22}$/.test(postId || "") || canonicalUrl(url) !== `https://x.com/i/status/${postId}`) throw new Error("invalid push target URL or post ID");
   if (!Number.isFinite(Date.parse(issuedAt)) || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Math.max(at, Date.parse(issuedAt))) throw new Error("collective push expired or has invalid dates");
   if (Date.parse(issuedAt) > at + 5 * 60_000) throw new Error("collective push issue time is in future");
@@ -122,6 +129,31 @@ function duplicateEvidence(matches) {
   }));
 }
 
+export function xPostQuads(row) {
+  if (!row || String(row.summary || "").length < 40 || !row.account || !Number.isFinite(Date.parse(row.created_at))) throw new Error("insufficient source evidence");
+  if (canonicalUrl(row.post_url) !== `https://x.com/i/status/${row.post_id}`) throw new Error("source URL does not match post ID");
+  const name = `curator-x-post-${row.post_id}`;
+  const subject = `https://www.dkgswarm.com/ka/${name}`;
+  const sourceTier = JSON.parse(row.classification_json || "{}").sourceTier || "discovery";
+  const published = new Date(Date.parse(row.created_at)).toISOString();
+  return {
+    name, subject, published, sourceTier,
+    quads: [
+      quad(subject, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "https://schema.org/SocialMediaPosting"),
+      quad(subject, "https://schema.org/url", canonicalUrl(row.post_url)),
+      quad(subject, `${ns}canonicalUrl`, canonicalUrl(row.post_url)),
+      quad(subject, "https://schema.org/author", `https://x.com/${row.account.replace(/^@/, "")}`),
+      quad(subject, "https://schema.org/articleBody", lit(row.summary)),
+      quad(subject, `${ns}publisher`, lit(row.account)),
+      quad(subject, "https://schema.org/datePublished", lit(published)),
+      quad(subject, `${ns}observedAt`, lit(row.observed_at)),
+      quad(subject, `${ns}sourceTier`, lit(sourceTier)),
+      quad(subject, `${ns}claimStatus`, lit("source self-report; not independently verified")),
+      quad(subject, `${ns}sourcePost`, `https://x.com/i/status/${row.post_id}`),
+    ],
+  };
+}
+
 export function competingDrafts(matches, draftSubject) {
   return matches.filter((item) => (item.s?.value || item.s) !== draftSubject);
 }
@@ -151,14 +183,14 @@ async function main() {
   const [action, id] = process.argv.slice(2);
   if (action === "list") {
     const seen = reviewed("x");
-    const rows = candidates().filter((row) => !seen.has(row.post_id)).slice(0, 20).map((row) => ({
+    const rows = candidates().filter((row) => !seen.has(row.post_id)).slice(0, 40).map((row) => ({
       id: row.post_id, account: row.account, url: row.post_url,
       summary: row.summary.slice(0, 250), observedAt: row.observed_at,
       category: JSON.parse(row.classification_json || "{}").category,
       sourceTier: JSON.parse(row.classification_json || "{}").sourceTier,
     }));
     const communitySeen = reviewed("community");
-    console.log(JSON.stringify({ graph, count: rows.length, candidates: rows, communityDrafts: intake().filter((row) => !communitySeen.has(row.name)).slice(0, 10) }));
+    console.log(JSON.stringify({ graph, count: rows.length, candidates: rows, communityDrafts: intake().filter((row) => !communitySeen.has(row.name)).slice(0, 40) }));
     return;
   }
   if (action === "reject") {
@@ -170,7 +202,7 @@ async function main() {
   }
   if (action === "community" || action === "promote-community") {
     if (!/^[a-zA-Z0-9._-]{1,80}$/.test(id || "")) throw new Error("invalid draft name");
-    const queued = intake().find((item) => item.name === id);
+    const queued = intake(id);
     if (!queued) throw new Error("draft not in authenticated MCP review queue");
     const result = await request("/api/query", { contextGraphId: graph, view: "working-memory",
       sparql: `SELECT ?p ?o WHERE { <https://www.dkgswarm.com/ka/${id}> ?p ?o } LIMIT 100` });
@@ -189,7 +221,7 @@ async function main() {
     const expiresAt = field("https://schema.org/expires");
     const angle = field(`${ns}proposedAngle`);
     const text = term(comment?.o) || "";
-    const isPush = /^collective[-_]?push[-_]/i.test(id);
+    const isPush = isCollectivePush(id);
     const draftSubject = `https://www.dkgswarm.com/ka/${id}`;
     if (!isPush && (!url || !publisher || typeof text !== "string" || text.length < 40 || competingDrafts(duplicates, draftSubject).length)) throw new Error("community source, publisher, substantive text and unique URL required");
     const canonical = isPush ? validateCollectivePush({ name: id, url, postId, issuedAt, expiresAt, publisher: term(publisher?.o), angle, text }) : canonicalUrl(url);
@@ -255,22 +287,7 @@ async function main() {
   if (action === "review") return;
   const existingSwm = duplicates.filter((item) => item.view === "shared-working-memory");
   if (existingSwm.length) { decision("x", id, "duplicate", "source URL already in SWM"); throw new Error("duplicate source URL in SWM; promotion blocked"); }
-  if (row.summary.length < 40 || !row.account || !row.created_at) throw new Error("insufficient source evidence");
-  const name = `curator-x-post-${id}`;
-  const subject = `https://www.dkgswarm.com/ka/${name}`;
-  const sourceTier = JSON.parse(row.classification_json).sourceTier || "discovery";
-  const quads = [
-    quad(subject, "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "https://schema.org/SocialMediaPosting"),
-    quad(subject, "https://schema.org/url", url),
-    quad(subject, `${ns}canonicalUrl`, url),
-    quad(subject, "https://schema.org/author", `https://x.com/${row.account.replace(/^@/, "")}`),
-    quad(subject, "https://schema.org/articleBody", lit(row.summary)),
-    quad(subject, `${ns}publisher`, lit(row.account)),
-    quad(subject, `${ns}observedAt`, lit(row.observed_at)),
-    quad(subject, `${ns}sourceTier`, lit(sourceTier)),
-    quad(subject, `${ns}claimStatus`, lit("source self-report; not independently verified")),
-    quad(subject, `${ns}sourcePost`, `https://x.com/i/status/${id}`),
-  ];
+  const { name, subject, quads } = xPostQuads(row);
   // Check again immediately before mutation. Concurrent curators must use run lock.
   const current = await duplicateInventory(url);
   if (current.some((item) => item.view === "shared-working-memory")) throw new Error("duplicate appeared during review");

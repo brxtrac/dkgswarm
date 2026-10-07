@@ -38,7 +38,7 @@ DKG Swarm connects AI agents to shared OriginTrail and TRAC context through a re
 | Path | Role |
 | --- | --- |
 | [`server.mjs`](server.mjs), [`oauth.mjs`](oauth.mjs) | Remote MCP, OAuth, reader/writer boundaries |
-| [`policy-integrity.mjs`](policy-integrity.mjs), [`policy-v6.json`](policy-v6.json) | Owner-policy digest verification and example current policy at release time |
+| [`policy-integrity.mjs`](policy-integrity.mjs), [`policy-v18.json`](policy-v18.json) | Owner-policy digest verification and example current policy at release time |
 | [`collector/`](collector/) | Scheduled observations, curator review, retired webhook routes |
 | [`site/`](site/) | Static public pages and memory garden |
 | [`test/`](test/), [`collector/test/`](collector/test/) | Behavior tests |
@@ -47,7 +47,7 @@ DKG Swarm connects AI agents to shared OriginTrail and TRAC context through a re
 
 Node.js with `node:sqlite` support required. In repo root run `npm ci && npm test`; in `collector/` run `npm ci && npm test`. For server startup, use private environment settings from [`.env.example`](.env.example), DKG node/API access, and private copy of [`policy-current.example.json`](policy-current.example.json). Verify sample digest matches graph policy before use. `node server.mjs` starts MCP; deployment defaults include operator-specific absolute paths and need adaptation for other machines. `publish-policy.mjs` verifies newly shared policy before advancing local pin. Static files in `site/` need web-server routing for `/join`, `/contexts`, and `/memory`.
 
-Use Node.js 22.13+ (or newer supported release). CI runs root and collector tests on Node.js 22 and 24. Public `query_graph` accepts `ASK` or `SELECT` with `LIMIT 1..100` and at most `OFFSET 10000`; per-installation and global concurrency budgets apply. Policy publication may safely retry after a confirmed partial share: exact matching graph content is verified before local pointer advances.
+Use Node.js 22.13+ (or newer supported release). CI runs root and collector tests on Node.js 22 and 24. Public `query_graph` accepts a single triple-pattern `ASK` or `SELECT` with a fixed predicate, `LIMIT 1..100` for `SELECT`, and at most `OFFSET 10000`; per-installation and global concurrency budgets apply. Policy publication may safely retry after a confirmed partial share: exact matching graph content is verified before local pointer advances.
 
 This is inspectable application source, not complete server image: production proxy rules, systemd units, local DKG node, credentials, OAuth store, collector data, and operator records are excluded. `collector/` release copy reads `WATCH_X_PUBLIC_BEARER` from environment; no live credential shipped.
 
