@@ -9,7 +9,9 @@
   "type": "module",
   "main": "server.mjs",
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "test:acceptance": "node --test test/acceptance/*.test.mjs",
+    "test:browser": "playwright test"
   },
   "keywords": [],
   "author": "",
@@ -18,5 +20,9 @@
     "@modelcontextprotocol/sdk": "^1.30.0",
     "express": "^5.2.1",
     "zod": "^4.6.4"
+  },
+  "devDependencies": {
+    "@origintrail-official/dkg-storage": "10.0.14",
+    "@playwright/test": "1.63.0"
   }
 }

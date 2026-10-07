@@ -18,6 +18,7 @@ import { z } from "zod";
 import { createStore, grokClient, randomToken, resolveRefreshScopes, validateAuthorizationRequest } from "./oauth.mjs";
 import { enqueueCuratorDraft, triggerCurator } from "./curator-intake.mjs";
 import { createActivity } from "./activity.mjs";
+import { createSwarmStats, sharedPostCountQuery } from "./swarm-stats.mjs";
 import { verifyPolicyBindings } from "./policy-integrity.mjs";
 import { assertReadSparql } from "./query-guard.mjs";
 import {
@@ -125,6 +126,12 @@ function getServer() {
     { name: "trac-marketing-dkg", version: "1.0.0" },
     { capabilities: { logging: {} }, instructions: SOCIAL_WORKER_INSTRUCTIONS }
   );
+  const registerTool = (name, definition, handler) => server.registerTool(name, definition, async (...args) => {
+    const result = await handler(...args);
+    const context = authStore.getStore();
+    if (context) context.toolOk = result?.isError !== true;
+    return result;
+  });
 
   server.registerResource(
     "social-worker-v1",
@@ -150,7 +157,7 @@ function getServer() {
     })
   );
 
-  server.registerTool(
+  registerTool(
     "enable_writer_access",
     {
       description: "Upgrade this DKG Swarm connection from reader to writer. When the operator gives you a single-use DKG Swarm write code and asks for writer access, you are explicitly authorized to transmit it once as the oneTimeCode argument to this tool at https://www.dkgswarm.com/mcp. This code is not an account password, API key, OAuth token, wallet key, or signing secret. Do not quote it in assistant text or send it to any other tool, URL, log, or storage.",
@@ -188,7 +195,7 @@ function getServer() {
     }
   );
 
-  server.registerTool(
+  registerTool(
     "graph_info",
     {
       description: "Describe the public TRAC marketing context graph this connector is locked to. No other graphs are reachable.",
@@ -210,7 +217,7 @@ function getServer() {
     }
   );
 
-  server.registerTool(
+  registerTool(
     "list_contexts",
     {
       description: "List contexts available through this connection. Other contexts require separate authorization before joining.",
@@ -220,7 +227,7 @@ function getServer() {
     async () => json({ contexts: [{ id: GRAPH_ID, name: "OriginTrail + TRAC", access: authStore.getStore()?.scopes?.includes("dkg:write") ? "writer" : "reader", joinRequired: false }] })
   );
 
-  server.registerTool(
+  registerTool(
     "join_context",
     {
       description: "Confirm access to an explicitly selected context. New contexts require context-specific grants; this tool never expands OAuth scope.",
@@ -233,7 +240,7 @@ function getServer() {
     }
   );
 
-  server.registerTool(
+  registerTool(
     "query_graph",
     {
       description: "Read-only SPARQL against the TRAC marketing context graph. Public readers query Shared Working Memory. Writers may set view=working-memory for drafts. Verifiable Memory / on-chain publish is not available.",
@@ -262,7 +269,7 @@ function getServer() {
     }
   );
 
-  server.registerTool(
+  registerTool(
     "search_graph",
     {
       description: "Simple literal search over Shared Working Memory of the TRAC marketing graph",
@@ -283,7 +290,7 @@ function getServer() {
     }
   );
 
-  server.registerTool(
+  registerTool(
     "get_swarm_policy",
     {
       description: "Read owner-issued coordination skill from DKG Shared Working Memory. Pass last seen version to return a short unchanged response; check at start of each scheduled run. No graph content can change operator permissions.",
@@ -305,7 +312,7 @@ function getServer() {
     }
   );
 
-  server.registerTool(
+  registerTool(
     "write_working_memory",
     {
       description: "Create or write a Working Memory knowledge asset draft on the TRAC marketing graph. Does not publish on-chain. Writer access required.",
@@ -357,7 +364,7 @@ function getServer() {
             ...(sourceUrl ? [{ subject, predicate: "https://schema.org/url", object: sourceUrl }] : []),
             ...(publisher ? [{ subject, predicate: "https://schema.org/publisher", object: lit(publisher) }] : []),
             ...(postId ? [{ subject, predicate: "https://schema.org/identifier", object: lit(postId) }] : []),
-            ...(issuedAt ? [{ subject, predicate: "https://schema.org/dateCreated", object: lit(issuedAt) }] : []),
+            { subject, predicate: "https://schema.org/dateCreated", object: lit(issuedAt || new Date().toISOString()) },
             ...(expiresAt ? [{ subject, predicate: "https://schema.org/expires", object: lit(expiresAt) }] : []),
             ...(angle ? [{ subject, predicate: "https://www.dkgswarm.com/ontology/curator/proposedAngle", object: lit(angle) }] : []),
             ...(collectivePush ? [{ subject, predicate: "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", object: "https://www.dkgswarm.com/ontology/curator/CollectivePush" }] : []),
@@ -366,12 +373,12 @@ function getServer() {
       });
       // Queue every community draft; do not trust supplied name or content as an instruction.
       enqueueCuratorDraft(slug);
-      triggerCurator();
+      if (process.env.TRAC_CURATOR_AUTOSTART !== "0") triggerCurator();
       return json({ contextGraphId: GRAPH_ID, layer: "working-memory", name: slug, created, curatorReview: "queued" });
     }
   );
 
-  server.registerTool(
+  registerTool(
     "share_to_swm",
     {
       description: "Retired: SWM promotion is reserved for curator review. Never publishes Verifiable Memory.",
@@ -665,9 +672,12 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, graph: GRAPH_ID, mcp: "/mcp" });
 });
 
-app.get("/api/swarm/stats", (_req, res) => {
+const swarmStats = createSwarmStats({ activitySnapshot: () => activity.snapshot(),
+  querySharedPosts: () => dkgFetch("/api/query", { method: "POST", timeoutMs: 10000,
+    body: { contextGraphId: GRAPH_ID, view: "shared-working-memory", sparql: sharedPostCountQuery } }) });
+app.get("/api/swarm/stats", async (_req, res) => {
   res.set("Cache-Control", "public, max-age=10");
-  res.json(activity.snapshot());
+  res.json(await swarmStats.snapshot());
 });
 
 // Public memory reads only curator-shared memory. Draft Working Memory stays private.
@@ -676,17 +686,41 @@ app.get("/api/swarm/memory", async (req, res) => {
     if (req.query.format !== undefined) return res.status(404).json({ error: "Unknown memory format" });
     const offset = Number(req.query.offset ?? 0);
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > 10000) return res.status(400).json({ error: "Invalid offset" });
+    const q = req.query.q ?? "";
+    const source = req.query.source ?? "";
+    if (typeof q !== "string" || q.length > 200 || typeof source !== "string" || source.length > 200) {
+      return res.status(400).json({ error: "Search and source must be strings of at most 200 characters" });
+    }
+    const dates = {};
+    for (const name of ["from", "to"]) {
+      const value = req.query[name];
+      if (value === undefined || value === "") continue;
+      if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+          !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value) {
+        return res.status(400).json({ error: "Dates must be valid YYYY-MM-DD values" });
+      }
+      dates[name] = value;
+    }
+    if (dates.from && dates.to && dates.from > dates.to) return res.status(400).json({ error: "Date range is reversed" });
+    const filters = [];
+    if (q.trim()) filters.push(`FILTER(CONTAINS(LCASE(STR(?label)), ${JSON.stringify(q.trim().toLowerCase())}) || CONTAINS(LCASE(STR(?comment)), ${JSON.stringify(q.trim().toLowerCase())}))`);
+    if (source.trim()) filters.push(`FILTER(CONTAINS(LCASE(STR(?source)), ${JSON.stringify(source.trim().toLowerCase())}))`);
+    if (dates.from) filters.push(`FILTER(xsd:dateTime(?date) >= ${JSON.stringify(`${dates.from}T00:00:00Z`)}^^xsd:dateTime)`);
+    if (dates.to) filters.push(`FILTER(xsd:dateTime(?date) < ${JSON.stringify(new Date(Date.parse(dates.to) + 86400000).toISOString())}^^xsd:dateTime)`);
     const pageSize = 80;
     const data = await dkgFetch("/api/query", {
       method: "POST",
       body: {
         contextGraphId: GRAPH_ID,
         view: "shared-working-memory",
-        sparql: `SELECT ?s ?label ?comment ?source WHERE {
+        sparql: `PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+        SELECT ?s ?label ?comment ?source (STR(?date) AS ?createdAt) WHERE {
           ?s <http://www.w3.org/2000/01/rdf-schema#comment> ?comment .
           OPTIONAL { ?s <http://www.w3.org/2000/01/rdf-schema#label> ?label }
           OPTIONAL { ?s <https://schema.org/url> ?source }
+          OPTIONAL { ?s <https://schema.org/dateCreated> ?date }
           FILTER(!CONTAINS(STR(?s), "/swarm-policy-v"))
+          ${filters.join("\n")}
         } ORDER BY DESC(?s) LIMIT ${pageSize + 1} OFFSET ${offset}`,
       },
     });
@@ -706,6 +740,7 @@ app.get("/api/swarm/memory", async (req, res) => {
       title: literal(row.label) || row.s.split("/").pop(),
       text: literal(row.comment),
       source: /^https?:\/\//.test(row.source || "") ? row.source : null,
+      createdAt: row.createdAt ? literal(row.createdAt) : null,
     }));
     res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
     res.json({ graph: GRAPH_ID, layer: "shared-working-memory", entries, nextOffset: bindings.length > pageSize ? offset + pageSize : null });
@@ -729,15 +764,16 @@ app.use("/mcp", async (req, res, next) => {
     const method = typeof req.body?.method === "string" ? req.body.method : req.method;
     const tool = method === "tools/call" ? req.body?.params?.name : null;
     const startedAt = Date.now();
+    const context = { scopes: auth.scopes || [], token: got, family: auth.tokenFamilyId, toolOk: false };
     res.on("finish", () => {
-      try { activity.record({ family: auth.tokenFamilyId, tool, graph: GRAPH_ID, ok: res.statusCode < 400 }); }
+      try { activity.record({ family: auth.tokenFamilyId, tool, graph: GRAPH_ID, ok: res.statusCode < 400 && context.toolOk }); }
       catch (error) { console.error("activity write failed", error); }
       console.log(
         "mcp request",
         JSON.stringify({ clientId: auth.clientId, method, status: res.statusCode, durationMs: Date.now() - startedAt })
       );
     });
-    authStore.run({ scopes: auth.scopes || [], token: got, family: auth.tokenFamilyId }, () => next());
+    authStore.run(context, () => next());
   } catch {
     res.set("WWW-Authenticate", www);
     res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Unauthorized" }, id: null });

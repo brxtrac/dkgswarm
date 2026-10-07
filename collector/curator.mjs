@@ -20,6 +20,19 @@ const rdfType = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type";
 const intakePath = process.env.TRAC_CURATOR_INTAKE || "/root/dkg-swarm-webhooks/data/curator-intake.sqlite";
 const reviewPath = process.env.TRAC_CURATOR_REVIEW || "/root/dkg-swarm-webhooks/data/curator-review.sqlite";
 
+export function curatorStatus() {
+  const read = (filename, sql) => {
+    let db;
+    try { db = new DatabaseSync(filename, { readOnly: true }); return db.prepare(sql).all(); }
+    catch { return null; }
+    finally { db?.close(); }
+  };
+  return {
+    pendingDrafts: read(intakePath, "SELECT COUNT(*) AS count FROM drafts WHERE reviewed_at IS NULL")?.[0]?.count ?? null,
+    decisions: read(reviewPath, "SELECT status, COUNT(*) AS count FROM decisions GROUP BY status ORDER BY status"),
+  };
+}
+
 function reviewStore() {
   const store = new DatabaseSync(reviewPath);
   store.exec(`PRAGMA busy_timeout = 5000;

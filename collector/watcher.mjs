@@ -857,6 +857,9 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     },
     status() {
       const queue = db.prepare("SELECT stage, status, COUNT(*) AS count FROM deliveries GROUP BY stage, status").all();
+      const pending = db.prepare(`SELECT COUNT(*) AS pendingDeliveries, SUM(d.attempts) AS failedAttempts,
+        MIN(o.observed_at) AS oldestPendingAt FROM deliveries d JOIN observations o ON o.post_id = d.post_id
+        WHERE d.status = 'pending'`).get();
       return {
         accounts, trustedAccounts, supportAccounts: supportAccounts(), monitoredAccounts: monitoredAccounts(), searchQueries, searchEvery, searchReady,
         pollMs, retryMs, reconcileMs, skipRts, skipReplies,
@@ -864,6 +867,9 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
         seeded: db.prepare("SELECT COUNT(*) AS count FROM seeded_accounts").get().count > 0,
         seenCount: db.prepare("SELECT COUNT(*) AS count FROM observations").get().count,
         queue, detections: state.detections,
+        queueHealth: { pendingDeliveries: pending.pendingDeliveries, failedAttempts: pending.failedAttempts || 0,
+          oldestPendingAt: pending.oldestPendingAt || null,
+          oldestPendingAgeMs: pending.oldestPendingAt ? Math.max(0, Date.now() - Date.parse(pending.oldestPendingAt)) : null },
       };
     },
     async test(fields) {

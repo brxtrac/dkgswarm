@@ -3,15 +3,13 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import express from "express";
 import { createWatcher, normalizeXHandle } from "./watcher.mjs";
+import { createSwarmStats, sharedPostCountQuery } from "../swarm-stats.mjs";
+import { curatorStatus } from "./curator.mjs";
 
 const DKG_API = (process.env.DKG_API_URL || "http://127.0.0.1:9200").replace(/\/$/, "");
 const GRAPH_ID = process.env.DKG_PUBLIC_GRAPH_ID || "trac-marketing";
-let sharedStats = { count: null, expiresAt: 0 };
-let sharedStatsRefresh;
-
-async function sharedPostCount() {
-  if (Date.now() < sharedStats.expiresAt) return sharedStats.count;
-  if (!sharedStatsRefresh) sharedStatsRefresh = (async () => {
+const swarmStats = createSwarmStats({
+  async querySharedPosts() {
     const token = fs.readFileSync(process.env.DKG_API_TOKEN_FILE || "/root/.dkg/auth.token", "utf8")
       .split(/\n/).find((line) => line.trim() && !line.trim().startsWith("#"))?.trim();
     if (!token) throw new Error("DKG token unavailable");
@@ -19,20 +17,13 @@ async function sharedPostCount() {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ contextGraphId: GRAPH_ID, view: "shared-working-memory",
-        sparql: "SELECT (COUNT(DISTINCT ?s) AS ?count) WHERE { ?s <https://schema.org/articleBody> ?body }" }),
+        sparql: sharedPostCountQuery }),
       signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) throw new Error(`DKG query ${response.status}`);
-    const body = await response.json();
-    const value = body?.result?.bindings?.[0]?.count;
-    const count = Number(String(value).match(/^"(\d+)"/)?.[1]);
-    if (!Number.isSafeInteger(count)) throw new Error("DKG count unavailable");
-    sharedStats = { count, expiresAt: Date.now() + 300000 };
-    return count;
-  })().finally(() => { sharedStatsRefresh = undefined; });
-  try { return await sharedStatsRefresh; }
-  catch { return sharedStats.count; }
-}
+    return response.json();
+  },
+});
 
 const PORT = Number(process.env.SWARM_WEBHOOK_PORT || 27132);
 const HOST = process.env.SWARM_WEBHOOK_HOST || "127.0.0.1";
@@ -149,15 +140,10 @@ app.get("/api/swarm/health", (_req, res) => {
 });
 
 app.get("/api/swarm/stats", async (_req, res) => {
-  try {
-    const sharedPosts = await sharedPostCount();
-    if (sharedPosts === null) throw new Error("shared memory unavailable");
-    const sources = watcher.status().queue.find((row) => row.stage === "raw-dkg" && row.status === "completed")?.count || 0;
-    res.set("Cache-Control", "public, max-age=300");
-    res.json({ collectedSources: sources, sharedPosts });
-  } catch {
-    res.status(503).json({ error: "Swarm stats temporarily unavailable" });
-  }
+  const stats = await swarmStats.snapshot();
+  res.set("Cache-Control", "public, max-age=10");
+  if (stats.sharedPosts === null) return res.status(503).json({ ...stats, error: "Swarm stats temporarily unavailable" });
+  res.json(stats);
 });
 
 app.post("/api/swarm/register", (req, res) => {
@@ -251,7 +237,8 @@ const watcher = createWatcher({
 });
 
 app.get("/api/swarm/watcher", requireAdmin, (_req, res) => {
-  res.json({ ok: true, ...watcher.status() });
+  res.set("Cache-Control", "no-store");
+  res.json({ ok: true, ...watcher.status(), curator: curatorStatus() });
 });
 
 app.post("/api/swarm/watcher/test", requireAdmin, async (req, res) => {
@@ -260,5 +247,5 @@ app.post("/api/swarm/watcher/test", requireAdmin, async (req, res) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`swarm webhooks http://${HOST}:${PORT}`);
-  watcher.start();
+  if (process.env.WATCH_ENABLED !== "0") watcher.start();
 });
