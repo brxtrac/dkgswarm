@@ -1,8 +1,6 @@
 # Dependencies and generated output
 node_modules/
 coverage/
-test-results/
-playwright-report/
 dist/
 build/
 *.log

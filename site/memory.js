@@ -5,27 +5,16 @@
   const entries = document.querySelector('#entries');
   const status = document.querySelector('#feed-status');
   const search = document.querySelector('#search');
-  const form = document.querySelector('#memory-filters');
-  const sourceFilter = document.querySelector('#source-filter');
-  const fromFilter = document.querySelector('#from-filter');
-  const toFilter = document.querySelector('#to-filter');
   const loadMore = document.querySelector('#load-more');
   const dialog = document.querySelector('#detail');
   let memories = [];
   let nextOffset = 0;
-  let activeFilters = new URLSearchParams();
-  let request;
-  let generation = 0;
-  let debounce;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function open(entry) {
     document.querySelector('#detail-title').textContent = entry.title;
     document.querySelector('#detail-id').textContent = entry.id;
     document.querySelector('#detail-text').textContent = entry.text;
-    const date = document.querySelector('#detail-date');
-    date.hidden = !entry.createdAt;
-    date.textContent = entry.createdAt ? `Recorded date: ${entry.createdAt}` : '';
     const source = document.querySelector('#detail-source');
     source.hidden = !entry.source;
     if (entry.source) source.href = entry.source;
@@ -36,11 +25,12 @@
   dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
 
   function renderList() {
-    const selected = memories;
+    const needle = search.value.trim().toLowerCase();
+    const selected = memories.filter(item => (item.title + ' ' + item.text).toLowerCase().includes(needle));
     entries.replaceChildren();
     if (!selected.length) {
       const message = document.createElement('p');
-      message.textContent = activeFilters.size ? 'No shared memories match these filters. Clear or change filters.' : 'No shared memories available yet.';
+      message.textContent = memories.length ? 'No shared memories match. Try another term.' : 'No shared memories available yet.';
       entries.append(message);
       return;
     }
@@ -58,20 +48,7 @@
       entries.append(button);
     });
   }
-  function applyFilters() {
-    clearTimeout(debounce);
-    activeFilters = new URLSearchParams();
-    for (const [name, input] of [['q', search], ['source', sourceFilter], ['from', fromFilter], ['to', toFilter]]) {
-      if (input.value.trim()) activeFilters.set(name, input.value.trim());
-    }
-    fetchPage(true);
-  }
-  form.addEventListener('submit', event => { event.preventDefault(); applyFilters(); });
-  form.addEventListener('input', () => {
-    clearTimeout(debounce);
-    debounce = setTimeout(applyFilters, 300);
-  });
-  document.querySelector('#clear-filters').addEventListener('click', () => { form.reset(); applyFilters(); });
+  search.addEventListener('input', renderList);
 
   function renderGraph() {
     nodes.replaceChildren(); links.replaceChildren();
@@ -95,48 +72,28 @@
       button.append(dot, label); button.addEventListener('click', () => open(featured[i])); nodes.append(button);
     });
   }
-  async function fetchPage(reset = false) {
-    request?.abort();
-    request = new AbortController();
-    const signal = request.signal;
-    const current = ++generation;
-    if (reset) {
-      memories = [];
-      nextOffset = 0;
-      loadMore.hidden = true;
-      entries.textContent = 'Searching shared memory…';
-      renderGraph();
-    }
+  async function fetchPage() {
     const offset = nextOffset;
-    const query = new URLSearchParams(activeFilters);
-    query.set('offset', offset);
     loadMore.disabled = true;
-    status.classList.remove('ready');
     try {
-      const response = await fetch(`/api/swarm/memory?${query}`, { signal });
+      const response = await fetch(`/api/swarm/memory?offset=${offset}`);
+      if (!response.ok) throw new Error('Graph unavailable');
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Shared memory temporarily unavailable');
-      if (current !== generation) return;
-      if (!Array.isArray(data.entries) || !(data.nextOffset === null || Number.isSafeInteger(data.nextOffset))) throw new Error('Shared memory response unavailable');
-      const known = new Set(memories.map(entry => entry.id));
-      memories.push(...data.entries.filter(entry => !known.has(entry.id)));
+      memories.push(...(Array.isArray(data.entries) ? data.entries : []));
       nextOffset = data.nextOffset;
       loadMore.hidden = nextOffset === null;
-      loadMore.textContent = 'Load more shared entries';
       status.textContent = `${memories.length} shared entries loaded${nextOffset === null ? '' : ' · more available'}`;
       status.classList.add('ready');
       renderGraph(); renderList();
-    } catch (error) {
-      if (signal.aborted || current !== generation) return;
-      status.textContent = 'Shared memory could not load';
-      if (!memories.length) entries.textContent = error.message;
-      loadMore.hidden = false;
-      loadMore.textContent = memories.length ? 'Retry loading more' : 'Retry search';
+    } catch {
+      status.textContent = 'Graph temporarily unavailable';
+      if (!memories.length) entries.textContent = 'Shared memory could not load. Refresh to try again.';
+      else loadMore.textContent = 'Retry loading more';
     } finally {
-      if (current === generation) loadMore.disabled = false;
+      loadMore.disabled = false;
     }
   }
-  loadMore.addEventListener('click', () => fetchPage());
+  loadMore.addEventListener('click', fetchPage);
   fetchPage();
   if (reduced) graph.classList.add('still');
 })();

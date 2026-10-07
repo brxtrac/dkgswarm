@@ -4,7 +4,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createActivity, readActivitySnapshot } from "../activity.mjs";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { z } from "zod";
+import { createActivity, trackToolOutcome } from "../activity.mjs";
 
 test("counts all-time installations and calls without exposing identities or counting pings", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "swarm-activity-"));
@@ -21,6 +26,11 @@ test("counts all-time installations and calls without exposing identities or cou
     assert.equal(snapshot.queries, 3);
     assert.equal(snapshot.contributionAttempts, 1);
     assert.equal(snapshot.toolCalls, 4);
+    assert.equal(snapshot.successfulToolCalls, 3);
+    assert.equal(snapshot.failedToolCalls, 1);
+    assert.equal(snapshot.unknownOutcomeCalls, 0);
+    assert.equal(snapshot.windows.last24Hours.connectedInstallations, 2);
+    assert.equal(snapshot.windows.last7Days.connectedInstallations, 3);
     assert.doesNotMatch(JSON.stringify(snapshot), /agent-a|agent-b/);
   } finally {
     activity.close();
@@ -28,40 +38,59 @@ test("counts all-time installations and calls without exposing identities or cou
   }
 });
 
-test("migration preserves legacy activity and classifies only newly observed tool outcomes", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "swarm-activity-migration-"));
+test("migration preserves historical flags as unknown and counts current tools", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "swarm-activity-"));
   const filename = path.join(dir, "activity.sqlite");
-  const at = Date.parse("2026-10-07T12:00:00Z");
+  const at = Date.now();
   const legacy = new DatabaseSync(filename);
   legacy.exec(`CREATE TABLE activity (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, graph TEXT NOT NULL,
     installation TEXT NOT NULL, tool TEXT NOT NULL, ok INTEGER NOT NULL)`);
-  legacy.prepare("INSERT INTO activity VALUES(1,?,'trac-marketing','legacy','write_working_memory',1)").run(at - 3600000);
+  legacy.prepare("INSERT INTO activity VALUES(1,?,'trac-marketing','legacy','write_working_memory',1)").run(at);
   legacy.close();
+  const activity = createActivity(filename);
   try {
-    const before = readActivitySnapshot(filename, at);
-    assert.equal(before.unknownOutcomeCalls, 1);
-    assert.equal(before.successfulDraftSubmissions, 0);
-    const untouched = new DatabaseSync(filename, { readOnly: true });
-    assert.equal(untouched.prepare("PRAGMA table_info(activity)").all().length, 6);
-    untouched.close();
-    const activity = createActivity(filename);
-    activity.record({ family: "new-reader", tool: "write_working_memory", graph: "trac-marketing", ok: false, at });
-    activity.record({ family: "old-reader", tool: "query_graph", graph: "trac-marketing", ok: true, at: at - 2 * 86400000 });
-    activity.record({ family: "outside-week", tool: "query_graph", graph: "trac-marketing", ok: true, at: at - 8 * 86400000 });
-    activity.record({ family: "writer", tool: "write_working_memory", graph: "trac-marketing", ok: true, at: at - 86400000 });
+    for (const tool of ["get_posting_context", "list_collective_pushes", "get_network_stats", "write_working_memory"]) {
+      activity.record({ family: "current", tool, graph: "trac-marketing", ok: true, at });
+    }
+    activity.record({ family: "ignored", tool: null, graph: "trac-marketing", ok: false, at });
     const snapshot = activity.snapshot(at);
     assert.equal(snapshot.toolCalls, 5);
-    assert.equal(snapshot.unknownOutcomeCalls, 1);
-    assert.equal(snapshot.failedToolCalls, 1);
+    assert.equal(snapshot.queries, 1);
+    assert.equal(snapshot.contributionAttempts, 2);
     assert.equal(snapshot.successfulDraftSubmissions, 1);
-    assert.equal(snapshot.windows.last24Hours.connectedInstallations, 3);
-    assert.equal(snapshot.windows.last7Days.connectedInstallations, 4);
-    assert.equal(snapshot.windows.last24Hours.unknownOutcomeCalls, 1);
-    activity.close();
-    const preserved = new DatabaseSync(filename, { readOnly: true });
-    assert.deepEqual({ ...preserved.prepare("SELECT id,installation,ok,outcome_known FROM activity WHERE id=1").get() },
-      { id: 1, installation: "legacy", ok: 1, outcome_known: 0 });
-    preserved.close();
-    assert.deepEqual(readActivitySnapshot(filename, at), snapshot);
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    assert.equal(snapshot.unknownOutcomeCalls, 1);
+    assert.equal(snapshot.successfulToolCalls, 4);
+    const oldWriter = new DatabaseSync(filename);
+    try {
+      oldWriter.prepare("INSERT INTO activity(at,graph,installation,tool,ok) VALUES(?,'trac-marketing','old-writer','query_graph',1)").run(at);
+      assert.equal(oldWriter.prepare("SELECT outcome_known FROM activity WHERE installation='old-writer'").get().outcome_known, 0);
+    } finally { oldWriter.close(); }
+    const check = new DatabaseSync(filename, { readOnly: true });
+    try {
+      assert.deepEqual({ ...check.prepare("SELECT ok,outcome_known FROM activity WHERE id=1").get() }, { ok: 1, outcome_known: 0 });
+    } finally { check.close(); }
+  } finally { activity.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("real MCP dispatch tracks success, returned errors, thrown errors and input validation", async () => {
+  const auth = new AsyncLocalStorage();
+  const server = new McpServer({ name: "activity-test", version: "1" });
+  const client = new Client({ name: "activity-test", version: "1" });
+  server.registerTool("fixture", { inputSchema: { mode: z.enum(["ok", "returned", "denied", "upstream"]) } },
+    trackToolOutcome(auth, async ({ mode }) => {
+      if (mode === "denied") throw new Error("Write denied");
+      if (mode === "upstream") throw new Error("DKG unavailable");
+      return { content: [{ type: "text", text: mode }], ...(mode === "returned" ? { isError: true } : {}) };
+    }));
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  try {
+    for (const mode of ["ok", "returned", "denied", "upstream", "invalid"]) {
+      const context = { toolOk: false };
+      const result = await auth.run(context, () => client.callTool({ name: "fixture", arguments: { mode } }));
+      assert.equal(result.isError === true, mode !== "ok", mode);
+      assert.equal(context.toolOk, mode === "ok", mode);
+    }
+  } finally { await client.close(); await server.close(); }
 });

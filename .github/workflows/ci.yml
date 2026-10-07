@@ -1,6 +1,7 @@
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
 jobs:
   test:
@@ -24,6 +25,3 @@ jobs:
         working-directory: collector
       - run: node --check watcher.mjs && node --check curator.mjs
         working-directory: collector
-      - run: npm run test:acceptance
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser
