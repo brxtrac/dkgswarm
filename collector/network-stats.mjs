@@ -3,6 +3,7 @@ const OTHUB = "https://othub.io";
 const STAKING = "https://staking.origintrail.io";
 const CMC = "https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail?slug=origintrail";
 const TTL_MS = 15 * 60 * 1000;
+const MARKET_TTL_MS = 60 * 1000;
 const YEAR_SEC = 365.25 * 86400;
 const WAD = 10n ** 18n;
 const MAX_LOCK = 6n;
@@ -31,7 +32,6 @@ const CARDS = {
   lastEpoch: [330, 84],
   currentEpoch: [331, 85],
   passedEpochs: [332, 96],
-  price: [333, 101],
   spent1y: [335, 105],
   spent24h: [477, 145],
   epoch: [315, 51],
@@ -64,6 +64,10 @@ export function createNetworkStats({
   let cache = null;
   let expiresAt = 0;
   let inflight = null;
+  let quoteCache = null;
+  let quoteExpiresAt = 0;
+  let quoteRetryAt = 0;
+  let quoteInflight = null;
 
   async function card(dashcardId, cardId) {
     const url = `${OTHUB}/api/public/dashboard/${DASHBOARD_UUID}/dashcard/${dashcardId}/card/${cardId}/json`;
@@ -88,7 +92,12 @@ export function createNetworkStats({
     const body = await response.json();
     const stats = body?.data?.statistics;
     if (!stats) throw new Error("cmc statistics missing");
+    const priceUsd = num(stats.price);
+    if (priceUsd == null || priceUsd <= 0) throw new Error("price missing");
+    if (num(stats.rank) == null || num(stats.marketCap) == null) throw new Error("market missing");
     return {
+      priceUsd,
+      asOf: new Date(now()).toISOString(),
       rank: num(stats.rank),
       marketCapUsd: num(stats.marketCap),
       change1hPct: num(stats.priceChangePercentage1h),
@@ -97,6 +106,26 @@ export function createNetworkStats({
       change30dPct: num(stats.priceChangePercentage30d),
       change1yPct: num(stats.priceChangePercentage1y),
     };
+  }
+
+  async function getMarket() {
+    if (quoteCache && now() < quoteExpiresAt) return { quote: quoteCache, stale: false };
+    if (quoteCache && now() < quoteRetryAt) return { quote: quoteCache, stale: true };
+    if (!quoteInflight) {
+      quoteInflight = market().then((quote) => {
+        quoteCache = quote;
+        quoteExpiresAt = now() + MARKET_TTL_MS;
+        return quote;
+      }).finally(() => { quoteInflight = null; });
+    }
+    try {
+      return { quote: await quoteInflight, stale: false };
+    } catch (error) {
+      if (!quoteCache) throw error;
+      quoteRetryAt = now() + MARKET_TTL_MS;
+      log.warn?.(`market refresh failed, serving cache: ${error.message}`);
+      return { quote: quoteCache, stale: true };
+    }
   }
 
   function num(value) {
@@ -131,7 +160,7 @@ export function createNetworkStats({
         coinmarketcap: "https://coinmarketcap.com/currencies/origintrail/",
       },
       note: "Figures are public othub.io aggregates plus CoinMarketCap TRAC quotes. maxDelegatorAprPct is the highest Annualized Node Yield high end on staking.origintrail.io: the node's score share of the 12-epoch scheduled reward pool, after operator fee, over effective stake, times the 365-day lock multiplier of 6. It is the top of that node's displayed range, not a realized payout. aprNode and aprChain name that node. stakedNodes counts sharding-table nodes on Base and Gnosis.",
-      priceUsd: scalar(parts.price, /trac_price/),
+      priceUsd: quote.priceUsd,
       market: quote,
       totalStakeTrac: num(field(stake, /stakeTRAC/)),
       totalStakeUsd: num(field(stake, /stakeUSD/)),
@@ -184,7 +213,7 @@ export function createNetworkStats({
   async function refresh() {
     const [entries, quote, apr] = await Promise.all([
       Promise.all(Object.entries(CARDS).map(async ([name, ids]) => [name, await card(ids[0], ids[1])])),
-      market(),
+      getMarket().then(({ quote }) => quote),
       readChain(),
     ]);
     const next = requireSnapshot(snapshot(Object.fromEntries(entries), quote, apr));
@@ -193,7 +222,7 @@ export function createNetworkStats({
     return next;
   }
 
-  async function get() {
+  async function getSnapshot() {
     if (cache && now() < expiresAt) return { ...cache, stale: false };
     if (!inflight) {
       inflight = refresh().finally(() => {
@@ -209,6 +238,12 @@ export function createNetworkStats({
       }
       throw error;
     }
+  }
+
+  async function get() {
+    const value = await getSnapshot();
+    const { quote, stale: priceStale } = await getMarket();
+    return { ...value, priceUsd: quote.priceUsd, market: quote, priceAsOf: quote.asOf, priceStale, stale: value.stale || priceStale };
   }
 
   return { get };

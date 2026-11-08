@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
+import { WRITER_INVITATION_TTL_MS } from "./writer-invitations.mjs";
 
 const PATH = process.env.DKG_MCP_WRITER_CODES || "/root/dkg-public-mcp/writer-codes.json";
 
@@ -126,9 +127,11 @@ function addCodes() {
     const db = readDb();
     const created = [];
     for (let i = 0; i < count; i += 1) {
+      const now = Date.now();
       const row = {
         code: crypto.randomBytes(12).toString("base64url"),
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + WRITER_INVITATION_TTL_MS).toISOString(),
         ...(memo ? { memo } : {}),
       };
       db.unused.push(row);

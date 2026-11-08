@@ -19,6 +19,9 @@ test("explicit intake lookup reaches position 86 while review list stays bounded
   db.close();
   try {
     assert.equal(intake(undefined, filename).length, 40);
+    assert.equal(intake(undefined, filename)[0].name, "collective-push-latest");
+    const terminal = new Set(Array.from({ length: 85 }, (_, i) => `draft-${i}`));
+    assert.deepEqual(intake(undefined, filename, terminal).map((row) => row.name), ["collective-push-latest"]);
     assert.equal(intake("collective-push-latest", filename).name, "collective-push-latest");
     assert.equal(intake("missing", filename), undefined);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -100,6 +103,21 @@ test("promotion confirms SWM, preserves provenance, audits and acknowledges only
   }
 });
 
+test("community rejection acknowledges only the queued fixture revision", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "curator-reject-"));
+  const filename = path.join(dir, "intake.sqlite");
+  const db = new DatabaseSync(filename);
+  db.exec("CREATE TABLE drafts(name TEXT PRIMARY KEY, queued_at TEXT, reviewed_at TEXT); INSERT INTO drafts VALUES ('draft-one','revision-one',NULL)");
+  const tokenFile = path.join(dir, "token");
+  fs.writeFileSync(tokenFile, "test-token");
+  try {
+    await promisify(execFile)(process.execPath, [new URL("../curator.mjs", import.meta.url).pathname, "reject", "community", "draft-one", "insufficient evidence"], {
+      env: { ...process.env, DKG_API_TOKEN_FILE: tokenFile, TRAC_CURATOR_INTAKE: filename, TRAC_CURATOR_REVIEW: path.join(dir, "review.sqlite"), DKG_API_URL: "http://127.0.0.1:1" },
+    });
+    assert.ok(db.prepare("SELECT reviewed_at FROM drafts").get().reviewed_at);
+  } finally { db.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("canonical URL strips tracking and normalizes X post identity", () => {
   assert.equal(canonicalUrl("http://www.example.org/story/?utm_source=x&b=2&a=1#part"), "https://example.org/story?a=1&b=2");
   assert.equal(canonicalUrl("https://twitter.com/SomeUser/status/123456789?ref_src=feed"), "https://x.com/i/status/123456789");
@@ -133,5 +151,8 @@ test("valid writer push remains separate from source evidence and has bounded ex
     issuedAt: "2026-09-25T10:00:00Z", expiresAt: "2026-09-25T12:00:00Z", angle: "Explain DKG context", text: "Campaign guidance with enough detail to establish intent." };
   assert.equal(validateCollectivePush(push, Date.parse("2026-09-25T11:00:00Z")), "https://x.com/i/status/123456789");
   assert.throws(() => validateCollectivePush(push, Date.parse("2026-09-25T12:00:00Z")), /expired/);
+  for (const expiresAt of ["2026-09-25T12:00:00.001Z", "2126-09-25T12:00:00Z"]) {
+    assert.throws(() => validateCollectivePush({ ...push, expiresAt }, Date.parse("2026-09-25T11:00:00Z")), /two hours/);
+  }
   assert.throws(() => validateCollectivePush({ ...push, postId: "987654321" }, Date.parse("2026-09-25T11:00:00Z")), /target URL/);
 });

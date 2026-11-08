@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { InvalidClientMetadataError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
+import { InvalidClientMetadataError, InvalidScopeError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 
 const DATA_PATH = process.env.DKG_MCP_OAUTH_STORE || "/root/dkg-public-mcp/data/oauth.json";
 const ALLOWED_REDIRECT_HOSTS = (process.env.DKG_MCP_OAUTH_REDIRECT_HOSTS || "grok.com,x.ai")
@@ -13,12 +13,27 @@ const LOOPBACK_REDIRECT_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 function load(dataPath = DATA_PATH) {
   try {
     return JSON.parse(fs.readFileSync(dataPath, "utf8"));
-  } catch {
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
     return { clients: {}, codes: {}, tokens: {} };
   }
 }
 
+function pruneExpired(db, now = Date.now()) {
+  let removed = 0;
+  for (const records of [db.codes, db.tokens]) {
+    for (const [key, row] of Object.entries(records)) {
+      if (Number.isFinite(row?.expiresAt) && row.expiresAt <= now) {
+        delete records[key];
+        removed++;
+      }
+    }
+  }
+  return removed;
+}
+
 function save(db, dataPath = DATA_PATH) {
+  pruneExpired(db);
   fs.mkdirSync(path.dirname(dataPath), { recursive: true });
   const tempPath = path.join(path.dirname(dataPath), `.${path.basename(dataPath)}.${process.pid}.tmp`);
   fs.writeFileSync(tempPath, JSON.stringify(db, null, 2), { mode: 0o600 });
@@ -27,9 +42,11 @@ function save(db, dataPath = DATA_PATH) {
 
 function redirectHostAllowed(uri) {
   try {
-    const host = new URL(uri).hostname.toLowerCase();
-    if (LOOPBACK_REDIRECT_HOSTS.has(host)) return true;
-    return ALLOWED_REDIRECT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+    const url = new URL(uri);
+    const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    if (url.username || url.password || url.hash) return false;
+    if (LOOPBACK_REDIRECT_HOSTS.has(host)) return ["http:", "https:"].includes(url.protocol);
+    return url.protocol === "https:" && ALLOWED_REDIRECT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
   } catch {
     return false;
   }
@@ -42,6 +59,12 @@ export function createStore(preloadedClients = [], dataPath = DATA_PATH) {
   }
   save(db, dataPath);
   return {
+    cleanupExpired(now = Date.now()) {
+      const dbNow = load(dataPath);
+      const removed = pruneExpired(dbNow, now);
+      if (removed) save(dbNow, dataPath);
+      return removed;
+    },
     async getClient(clientId) {
       return load(dataPath).clients[clientId];
     },
@@ -142,7 +165,7 @@ export function randomToken() {
 export function resolveRefreshScopes(grantedScopes = [], requestedScopes = []) {
   const resolved = requestedScopes.length ? requestedScopes : grantedScopes;
   if (resolved.some((scope) => !grantedScopes.includes(scope))) {
-    throw new Error("Requested scope exceeds original grant");
+    throw new InvalidScopeError("Requested scope exceeds original grant");
   }
   return resolved;
 }

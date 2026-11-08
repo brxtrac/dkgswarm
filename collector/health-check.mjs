@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-// Daily flow check for the public swarm. Writes a status file the site reads.
-// Fixes only dead services and collector rows stuck past max attempts.
-// Never restarts Oxigraph, never discards, never shares to SWM.
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -43,11 +40,7 @@ function systemctl(args) {
   }
 }
 
-function serviceActive(name) {
-  return systemctl(["is-active", name]) === "active";
-}
-
-async function graphAsk() {
+async function graphAsk(view = "working-memory") {
   const bearer = token();
   if (!bearer) return { ok: false, detail: "DKG token missing" };
   const { dkgApi, graphId } = paths();
@@ -56,7 +49,7 @@ async function graphAsk() {
     headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       contextGraphId: graphId,
-      view: "working-memory",
+      view,
       sparql: "ASK { ?s ?p ?o }",
     }),
     signal: AbortSignal.timeout(12000),
@@ -64,8 +57,8 @@ async function graphAsk() {
   if (!response.ok) return { ok: false, detail: `graph query HTTP ${response.status}` };
   const body = await response.json();
   const value = body?.result?.boolean ?? body?.result?.value;
-  if (value !== true && value !== "true") return { ok: false, detail: "working memory ASK empty" };
-  return { ok: true, detail: "working memory readable" };
+  if (value !== true && value !== "true") return { ok: false, detail: `${view} ASK empty` };
+  return { ok: true, detail: `${view} readable` };
 }
 
 function collectorSnapshot(db, maxAttempts) {
@@ -78,7 +71,15 @@ function collectorSnapshot(db, maxAttempts) {
     WHERE stage IN ('raw-dkg', 'derived-dkg') AND status = 'pending'`).get().due;
   const notExact = db.prepare(`SELECT COUNT(*) AS count FROM deliveries
     WHERE status = 'quarantined' AND last_error LIKE '%WM/SWM content not exactly verified%'`).get().count;
+  const metadata = Object.fromEntries(db.prepare("SELECT key, value FROM runtime_metadata WHERE key LIKE 'collector-%'").all().map((row) => [row.key, row.value]));
+  const push = db.prepare(`SELECT COUNT(*) AS pending, MIN(next_attempt_at) AS oldestDue FROM deliveries
+    WHERE stage = 'trusted-push-dkg' AND status = 'pending'`).get();
   return {
+    lastSuccessfulPoll: metadata["collector-last-successful-poll"],
+    lastSearch: metadata["collector-last-search"],
+    searchEnabled: metadata["collector-search-enabled"] === "true",
+    pushPending: push.pending,
+    pushOldestDue: push.oldestDue,
     completed: counts.completed || 0,
     pending: counts.pending || 0,
     quarantined: counts.quarantined || 0,
@@ -86,13 +87,6 @@ function collectorSnapshot(db, maxAttempts) {
     oldestDue,
     notExact,
   };
-}
-
-function requeueStuck(db, maxAttempts) {
-  const result = db.prepare(`UPDATE deliveries
-    SET status = 'pending', attempts = 0, next_attempt_at = ?, last_error = 'health check requeued stuck delivery'
-    WHERE stage IN ('raw-dkg', 'derived-dkg') AND status = 'pending' AND attempts >= ?`).run(new Date().toISOString(), maxAttempts);
-  return result.changes;
 }
 
 function worse(level, next) {
@@ -105,18 +99,18 @@ function summaryFor(level, notes) {
   return "Context graph flow is healthy.";
 }
 
-export async function runHealthCheck({ restart = true, write = true } = {}) {
+export async function runHealthCheck({ restart = false, write = true, service = systemctl, query = graphAsk, snapshot, clock = Date.now } = {}) {
   const notes = [];
   const fixes = [];
   let level = "green";
   const services = {};
 
   for (const name of SERVICES) {
-    let active = serviceActive(name);
+    let active = service(["is-active", name]) === "active";
     services[name] = active ? "active" : "down";
     if (!active && restart) {
-      systemctl(["restart", name]);
-      active = serviceActive(name);
+      service(["restart", name]);
+      active = service(["is-active", name]) === "active";
       services[name] = active ? "restarted" : "down";
       fixes.push(active ? `restarted ${name}` : `restart failed ${name}`);
     }
@@ -129,33 +123,27 @@ export async function runHealthCheck({ restart = true, write = true } = {}) {
     }
   }
 
-  let graph = { ok: false, detail: "not checked" };
-  try {
-    graph = await graphAsk();
-  } catch (error) {
-    graph = { ok: false, detail: String(error.message || error).slice(0, 180) };
-  }
-  if (!graph.ok) {
-    level = "red";
-    notes.push(`down: ${graph.detail}`);
+  for (const view of ["working-memory", "shared-working-memory"]) {
+    try {
+      const result = await query(view);
+      if (!result.ok) { level = "red"; notes.push(`down: ${view} unavailable or empty`); }
+    } catch {
+      level = "red";
+      notes.push(`down: ${view} unavailable`);
+    }
   }
 
   let collector = { pending: 0, stuck: 0, notExact: 0, completed: 0, quarantined: 0 };
   try {
-    const db = new DatabaseSync(paths().dbPath);
-    db.exec("PRAGMA busy_timeout = 5000");
-    collector = collectorSnapshot(db, paths().maxAttempts);
-    if (collector.stuck > 0 && restart) {
-      const changed = requeueStuck(db, paths().maxAttempts);
-      if (changed > 0) {
-        fixes.push(`requeued ${changed} stuck deliveries`);
-        collector.stuck = 0;
-      }
+    if (snapshot) collector = await snapshot();
+    else {
+      const db = new DatabaseSync(paths().dbPath, { readOnly: true });
+      try { collector = collectorSnapshot(db, paths().maxAttempts); }
+      finally { db.close(); }
     }
-    db.close();
   } catch (error) {
     level = "red";
-    notes.push(`down: collector db ${String(error.message || error).slice(0, 120)}`);
+    notes.push("down: collector database unavailable");
   }
 
   if (collector.stuck > 0) {
@@ -163,7 +151,7 @@ export async function runHealthCheck({ restart = true, write = true } = {}) {
     notes.push(`down: ${collector.stuck} deliveries stuck at max attempts`);
   }
   const dueMs = collector.oldestDue ? Date.parse(collector.oldestDue) : NaN;
-  if (collector.pending > 80 || (Number.isFinite(dueMs) && Date.now() - dueMs > STALE_MS)) {
+  if (collector.pending > 80 || (Number.isFinite(dueMs) && clock() - dueMs > STALE_MS)) {
     level = worse(level, "yellow");
     notes.push(`collector backlog pending ${collector.pending}`);
   }
@@ -172,7 +160,24 @@ export async function runHealthCheck({ restart = true, write = true } = {}) {
     notes.push(`${collector.notExact} exact-content rows still reconciling`);
   }
 
-  const curator = systemctl(["is-active", "trac-marketing-curator.timer"]);
+  if (collector.quarantined > 0) {
+    level = worse(level, "yellow");
+    notes.push(`${collector.quarantined} deliveries quarantined; manual review required`);
+  }
+  const fresh = (value, maxAge) => Number.isFinite(Date.parse(value)) && clock() - Date.parse(value) <= maxAge && Date.parse(value) <= clock() + 60000;
+  if (!fresh(collector.lastSuccessfulPoll, 15 * 60000)) {
+    level = "red";
+    notes.push("down: collector successful poll is stale or unknown");
+  }
+  if (collector.searchEnabled && !fresh(collector.lastSearch, 30 * 60000)) {
+    level = worse(level, "yellow");
+    notes.push("collector search is stale or unknown");
+  }
+  if (collector.pushPending > 0 && !fresh(collector.pushOldestDue, 5 * 60000)) {
+    level = worse(level, "yellow");
+    notes.push("trusted push delivery backlog");
+  }
+  const curator = service(["is-active", "trac-marketing-curator.timer"]);
   const curatorOk = curator === "active";
   if (!curatorOk) {
     level = worse(level, "yellow");
@@ -183,7 +188,7 @@ export async function runHealthCheck({ restart = true, write = true } = {}) {
     level,
     ok: level !== "red",
     summary: summaryFor(level, notes),
-    checkedAt: new Date().toISOString(),
+    checkedAt: new Date(clock()).toISOString(),
     graph: paths().graphId,
     services,
     curatorTimer: curatorOk ? "active" : curator || "inactive",

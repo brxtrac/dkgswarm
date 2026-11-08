@@ -15,7 +15,10 @@ import {
 import { tokenHandler } from "@modelcontextprotocol/sdk/server/auth/handlers/token.js";
 import { clientRegistrationHandler } from "@modelcontextprotocol/sdk/server/auth/handlers/register.js";
 import { z } from "zod";
-import { createStore, grokClient, randomToken, resolveRefreshScopes, validateAuthorizationRequest } from "./oauth.mjs";
+import { createStore, grokClient, validateAuthorizationRequest } from "./oauth.mjs";
+import { createOAuthProvider } from "./oauth-provider.mjs";
+import { isWriterInvitationActive } from "./writer-invitations.mjs";
+import { OAuthError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import { routeDraft, retryCollectivePushes } from "./curator-intake.mjs";
 import { normalizeDraftName, isCollectivePush, validateCollectivePush } from "./collector/curator.mjs";
 import { createActivity, trackToolOutcome } from "./activity.mjs";
@@ -574,6 +577,7 @@ function consumeWriterSecret(got, { activate = () => true, deactivate = () => {}
       const idx = unused.findIndex((row) => row && secretsEqual(row.code, offered));
       if (idx === -1) return false;
       const row = unused[idx];
+      if (!isWriterInvitationActive(row)) return false;
       const grantId = writerGrantId(row.code);
       if (!activate(grantId)) return false;
       unused.splice(idx, 1);
@@ -592,111 +596,12 @@ function consumeWriterSecret(got, { activate = () => true, deactivate = () => {}
 const issuerUrl = new URL(PUBLIC_URL);
 const mcpUrl = new URL(`${PUBLIC_URL}/mcp`);
 const store = createStore([grokClient()]);
-const ACCESS_TTL = 3600;
-const REFRESH_TTL = 30 * 24 * 3600;
-
-const provider = {
-  get clientsStore() {
-    return store;
-  },
-  async authorize(client, params, res) {
-    const code = randomToken();
-    store.putCode(code, {
-      clientId: client.client_id,
-      redirectUri: params.redirectUri,
-      codeChallenge: params.codeChallenge,
-      scopes: ["dkg:read"],
-      writerGrantId: null,
-      resource: params.resource?.href,
-      expiresAt: Date.now() + 5 * 60 * 1000,
-    });
-    const target = new URL(params.redirectUri);
-    target.searchParams.set("code", code);
-    if (params.state) target.searchParams.set("state", params.state);
-    res.redirect(302, target.toString());
-  },
-  async challengeForAuthorizationCode(client, authorizationCode) {
-    const data = store.peekCode(authorizationCode);
-    if (!data || data.clientId !== client.client_id) throw new Error("Invalid authorization code");
-    return data.codeChallenge;
-  },
-  async exchangeAuthorizationCode(client, authorizationCode, _verifier, redirectUri) {
-    const data = store.peekCode(authorizationCode);
-    if (!data || data.clientId !== client.client_id) throw new Error("Invalid authorization code");
-    if (data.expiresAt < Date.now()) throw new Error("Authorization code expired");
-    if (redirectUri && redirectUri !== data.redirectUri) throw new Error("redirect_uri mismatch");
-    if (!writerCredentialsActive(data)) throw new Error("Writer grant revoked");
-    const consumed = store.takeCode(authorizationCode);
-    if (!consumed) throw new Error("Invalid authorization code");
-    return issueTokens(client.client_id, consumed.scopes, consumed.resource, consumed.writerGrantId);
-  },
-  async exchangeRefreshToken(client, refreshToken, scopes) {
-    const data = store.getToken(refreshToken);
-    if (!data || data.type !== "refresh" || data.clientId !== client.client_id) {
-      throw new Error("Invalid refresh token");
-    }
-    if (data.expiresAt < Date.now()) throw new Error("Refresh token expired");
-    if (!writerCredentialsActive(data)) throw new Error("Writer grant revoked");
-    let requestedScopes = resolveRefreshScopes(data.scopes, scopes);
-    if (data.writerGrantId) {
-      requestedScopes = Array.from(new Set([...requestedScopes, "dkg:read", "dkg:write"]));
-    }
-    store.deleteToken(refreshToken);
-    return issueTokens(
-      client.client_id,
-      requestedScopes,
-      data.resource,
-      data.writerGrantId,
-      data.tokenFamilyId
-    );
-  },
-  async verifyAccessToken(token) {
-    const data = store.getToken(token);
-    if (!data || data.type !== "access" || data.expiresAt < Date.now()) {
-      throw new Error("Invalid or expired token");
-    }
-    if (data.resource !== mcpUrl.href) throw new Error("Token resource mismatch");
-    if (!writerCredentialsActive(data)) throw new Error("Writer grant revoked");
-    return {
-      token,
-      clientId: data.clientId,
-      tokenFamilyId: data.tokenFamilyId,
-      scopes: data.scopes,
-      expiresAt: Math.floor(data.expiresAt / 1000),
-      resource: data.resource,
-    };
-  },
-};
-
-function issueTokens(clientId, scopes, resource, writerGrantId = null, tokenFamilyId = randomToken()) {
-  const access = randomToken();
-  const refresh = randomToken();
-  store.putToken(access, {
-    type: "access",
-    clientId,
-    scopes,
-    writerGrantId,
-    tokenFamilyId,
-    resource,
-    expiresAt: Date.now() + ACCESS_TTL * 1000,
-  });
-  store.putToken(refresh, {
-    type: "refresh",
-    clientId,
-    scopes,
-    writerGrantId,
-    tokenFamilyId,
-    resource,
-    expiresAt: Date.now() + REFRESH_TTL * 1000,
-  });
-  return {
-    access_token: access,
-    token_type: "bearer",
-    expires_in: ACCESS_TTL,
-    scope: (scopes || []).join(" "),
-    refresh_token: refresh,
-  };
-}
+const provider = createOAuthProvider({ store, mcpUrl, writerCredentialsActive });
+const cleanupTimer = setInterval(() => {
+  try { store.cleanupExpired(); }
+  catch { console.error("OAuth expiry cleanup failed"); }
+}, 60 * 60 * 1000);
+cleanupTimer.unref();
 
 const app = createMcpExpressApp({ host: HOST, allowedHosts: ALLOWED_HOSTS });
 app.set("trust proxy", "loopback, linklocal, uniquelocal");
@@ -756,6 +661,10 @@ app.all("/authorize", async (req, res) => {
       res
     );
   } catch (error) {
+    if (error instanceof OAuthError) {
+      if (!res.headersSent) res.status(400).json(error.toResponseObject());
+      return;
+    }
     console.error("authorize error", error);
     if (!res.headersSent) res.status(500).json({ error: "server_error" });
   }

@@ -88,6 +88,10 @@ test("add stores memo on new codes", (t) => {
 
   assert.equal(writer.unused.length, 2);
   assert.deepEqual(writer.unused.map((row) => row.memo), ["Alice team", "Alice team"]);
+  for (const row of writer.unused) {
+    const lifetime = Date.parse(row.expiresAt) - Date.parse(row.createdAt);
+    assert.ok(lifetime >= 7 * 24 * 3600000 && lifetime <= 7 * 24 * 3600000 + 1000);
+  }
 });
 
 test("memo adds or renames memo on unused and used codes", (t) => {
