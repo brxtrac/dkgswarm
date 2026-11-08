@@ -46,3 +46,16 @@ test('project license is declared consistently as MIT with a root LICENSE', () =
   assert.equal(JSON.parse(read('package-lock.json')).packages[''].license, 'MIT');
   assert.equal(JSON.parse(read('collector/package-lock.json')).packages[''].license, 'MIT');
 });
+
+test('third-party notices preserve the PR #1 ISC basis', () => {
+  const notices = read('THIRD_PARTY_NOTICES.md');
+  assert.match(read('README.md'), /THIRD_PARTY_NOTICES\.md/);
+  assert.match(notices, /https:\/\/github\.com\/brxtrac\/dkgswarm\/pull\/1/);
+  assert.match(notices, /87059a5b38e9f693121009d2b21f43b652b7b3f8/);
+  assert.match(notices, /DeFine/);
+  for (const file of ['activity.mjs', 'server.mjs', 'test/activity.test.mjs']) {
+    assert.ok(notices.includes(file), file);
+  }
+  assert.match(notices, /ISC/);
+  assert.match(notices, /does not relicense/);
+});
