@@ -6,12 +6,12 @@ const root = new URL('../', import.meta.url);
 const read = (name) => fs.readFileSync(new URL(name, root), 'utf8');
 const publicCopy = ['README.md', 'site/index.html', 'site/contexts.html', 'site/llms.txt'];
 
-test('public copy describes an owner-approved move, not a completed transfer', () => {
+test('public copy records the completed OpenDKG move without endorsement claims', () => {
   for (const file of publicCopy) {
     const text = read(file);
     assert.match(text, /OpenDKG/, file);
-    assert.match(text, /transfer/i, file);
-    assert.doesNotMatch(text, /(?:repository|repo|project) is (?:now )?OpenDKG-owned|owned by OpenDKG|transferred to OpenDKG|OpenDKG has endorsed|official OpenDKG (?:project|marketing)/i, file);
+    assert.match(text, /(?:transfer(?:red)?|moved)/i, file);
+    assert.doesNotMatch(text, /OpenDKG (?:has )?endorsed|endorsed by (?:OpenDKG|OriginTrail)|official OpenDKG (?:project|marketing)|production source of record/i, file);
   }
 });
 
@@ -28,7 +28,7 @@ test('public vision preserves the existing mission and permission boundaries', (
   assert.match(read('site/llms.txt'), /trac-marketing[\s\S]*only live (?:context|graph)/i);
 });
 
-test('OpenDKG references point to the public organization and local proposal docs', () => {
+test('OpenDKG references point to the public organization and local integration docs', () => {
   for (const file of ['README.md', 'site/index.html', 'site/contexts.html']) {
     assert.match(read(file), /https:\/\/github\.com\/OpenDKG/, file);
   }
@@ -45,6 +45,16 @@ test('project license is declared consistently as MIT with a root LICENSE', () =
   }
   assert.equal(JSON.parse(read('package-lock.json')).packages[''].license, 'MIT');
   assert.equal(JSON.parse(read('collector/package-lock.json')).packages[''].license, 'MIT');
+});
+
+test('current repository pointers use the OpenDKG namespace', () => {
+  const pkg = JSON.parse(read('package.json'));
+  assert.equal(pkg.repository, 'https://github.com/OpenDKG/dkgswarm');
+  assert.equal(pkg.bugs, 'https://github.com/OpenDKG/dkgswarm/issues');
+  assert.equal(pkg.homepage, 'https://www.dkgswarm.com');
+  for (const file of publicCopy) {
+    assert.doesNotMatch(read(file), /github\.com\/brxtrac\/dkgswarm/, file);
+  }
 });
 
 test('third-party notices preserve the PR #1 ISC basis', () => {

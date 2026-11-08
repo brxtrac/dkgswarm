@@ -1,19 +1,19 @@
-# OpenDKG umbrella integration — owner-approved move
+# OpenDKG umbrella integration — completed repository move
 
-**Status: owner-approved move, not executed. Not an OpenDKG endorsement.**
+**Status: repository move completed 2026-11-08 under owner authorization. Not an OpenDKG content endorsement.**
 
-This document records the proposed OpenDKG affiliation and the owner's decision to move future development and repository custody to `OpenDKG/dkgswarm`. DKGSwarm keeps its existing OriginTrail, TRAC, and Umanitek mission, project leadership, domain, accounts, graph scope, and deploy authority. No repository transfer, runtime change, funding arrangement, or governance change is made by this document.
+This document records the OpenDKG affiliation and the owner-authorized repository move to `OpenDKG/dkgswarm`. DKGSwarm keeps its existing OriginTrail, TRAC, and Umanitek mission, project leadership, domain, accounts, graph scope, and deploy authority. The repository transfer is complete; no runtime, funding, policy, or further governance change is made by this document.
 
-Decision basis (2026-11-08): the owner (`brxtrac`) approved the `OpenDKG/dkgswarm` target and repository move and selected MIT as this project's license. The target was still absent on 2026-11-08; transfer and post-transfer verification are pending.
+Decision basis (2026-11-08): the owner (`brxtrac`) approved the `OpenDKG/dkgswarm` target and repository move and selected MIT as this project's license. The target was unclaimed before the move; transfer completed to repository id `1391410974` at `main` `70b2cb2e408b1b00e167b01aee5fee4dfef3c896` (PR #3). The provenance and governance review is recorded in PR #3 and `THIRD_PARTY_NOTICES.md`.
 
 | Field | Value |
 | --- | --- |
 | Proposal date | 2026-11-07 |
-| Inspection basis | `brxtrac/dkgswarm` at `33760fa575d7002332877dd90da199c5de2126a7` on `main` (2026-11-08) |
-| Proposed umbrella | [OpenDKG](https://github.com/OpenDKG) |
-| Proposed target repository | `OpenDKG/dkgswarm` (owner-approved; verified absent on 2026-11-08; transfer pending) |
-| Current repository owner | `brxtrac/dkgswarm` |
-| Change scope | Documentation, site copy, MIT license metadata, and a guard test. No workflow, dependency, runtime, deployment, policy, domain, or permission change. |
+| Inspection basis | `OpenDKG/dkgswarm` at `70b2cb2e408b1b00e167b01aee5fee4dfef3c896` on `main` (post-transfer, 2026-11-08) |
+| Umbrella | [OpenDKG](https://github.com/OpenDKG) |
+| Target repository | `OpenDKG/dkgswarm` (transfer completed 2026-11-08; repository id `1391410974`) |
+| Repository owner | `OpenDKG` |
+| Change scope | Documentation, site copy, MIT license metadata, namespace pointers, and guard tests. No workflow, dependency, runtime, deployment, policy, domain, or organization-permission change. |
 
 **Status legend:** **Verified** means directly inspected. **Proposed** means a draft that has no effect yet. **Open** means no decision. **Not implemented** means exactly that.
 
@@ -21,7 +21,7 @@ Decision basis (2026-11-08): the owner (`brxtrac`) approved the `OpenDKG/dkgswar
 
 DKGSwarm currently operates a public site, agent onboarding flow, remote MCP connector, `trac-marketing` context graph, owner-policy release process, and collector/curator services. The approved direction is to use that existing operating surface as the OpenDKG front-facing community marketing, discovery, and coordination layer: help people find and understand OpenDKG apps and coordinate public marketing context, agent onboarding, and content workflows that already exist, without acquiring new graph, account, posting, or policy authority. The existing OriginTrail, TRAC, and Umanitek mission remains intact.
 
-This is an affiliation and operating-role move, not a monorepo merger. History and project independence are preserved. The owner approved the repository transfer separately; this document does not execute it.
+This is an affiliation and operating-role move, not a monorepo merger. History and project independence are preserved. The repository transfer completed on 2026-11-08; this document records it and keeps runtime, funding, and further governance changes out of scope.
 
 This move does not rely on a published count of connected agents or consenting members, and makes no usage, membership, or growth claim. A connection is not treated as active or consenting membership.
 
@@ -31,12 +31,14 @@ The following was checked directly on 2026-11-07 and rechecked where noted on 20
 
 | Area | Verified state |
 | --- | --- |
-| GitHub repository | Public, not a fork, not archived, default branch `main`, latest commit `33760fa` (2026-11-08 merge of PR #2). |
+| GitHub repository | Public, not a fork, not archived, default branch `main`, latest commit `70b2cb2` (2026-11-08 merge of PR #3). Repository id `1391410974`, unchanged by the move. |
+| Repository custody | `OpenDKG/dkgswarm`; old `brxtrac/dkgswarm` returns HTTP 301 to the new namespace. |
+| Post-transfer access | Organization default repository permission is `admin`, so current organization members receive admin on this public repository. This was not changed here; it is an existing organization setting. |
 | License metadata | MIT is this project's selected license: root `LICENSE` (`Copyright (c) 2025 BRX`), root and collector package metadata, and the root lockfile entry all declare MIT. `THIRD_PARTY_NOTICES.md` preserves the merged PR #1 contribution's original ISC basis, observed git attribution (`DeFine`), and affected files; the owner's MIT license does not relicense that contribution. Bundled third-party names, logos, and media keep their own terms. |
 | CI | One workflow, `.github/workflows/ci.yml`, runs root and collector tests on Node.js 22 and 24. No deployment workflow. |
 | Branch protection | `main` requires the `test (22)`, `test (24)`, and `ai-review/evidence` checks; strict checks; no force-push or deletion; admins included; zero required approving reviews. |
-| Issue/PR state | No open issues at inspection; one merged external pull request in history. |
-| Repository guidance and automation | README only; no `AGENTS.md`, `CONTRIBUTING`, issue templates, `SECURITY.md`, `CODEOWNERS`, Dependabot configuration, GitHub Pages site, or discussions. No issue-support automation was found. |
+| Issue/PR state | No open issues; three merged pull requests, including one external contribution (PR #1). |
+| Repository guidance and automation | README, MIT `LICENSE`, and `THIRD_PARTY_NOTICES.md`; no `AGENTS.md`, `CONTRIBUTING`, issue templates, `SECURITY.md`, `CODEOWNERS`, Dependabot configuration, GitHub Pages site, or discussions. No issue-support automation was found. |
 | Live join page | `https://www.dkgswarm.com/join` returned HTTP 200. |
 | MCP endpoint | `https://www.dkgswarm.com/mcp` returned HTTP 401 without a token, as expected. |
 | OAuth protected resource | `resource: https://www.dkgswarm.com/mcp`; scopes `dkg:read` and `dkg:write`. |
@@ -62,13 +64,13 @@ agent application
 
 The umbrella adds affiliation, public governance visibility, and a shared contribution path. It does not add a runtime dependency, shared deployment, or automatic data flow between OpenDKG projects.
 
-Operator-managed dependencies are not represented by a deployment workflow in the repository: DNS/TLS/edge routing, the MCP process, the collector, the site/game Express process, the local DKG node, the policy pointer and OAuth/writer state, and scheduled host timers. Repository transfer leaves these in place; only custody and access are reviewed.
+Operator-managed dependencies are not represented by a deployment workflow in the repository: DNS/TLS/edge routing, the MCP process, the collector, the site/game Express process, the local DKG node, the policy pointer and OAuth/writer state, and scheduled host timers. The completed repository transfer left these in place; custody changed, and access follows the organization default recorded above.
 
 Extending `trac-marketing` or creating a separate OpenDKG context graph is an owner design choice, not a requirement of affiliation. A shared OpenDKG graph with per-project subgraphs remains a longer-term design question. Neither option is **implemented** by this document. No graph is created, renamed, merged, or joined here, and `trac-marketing` remains the only graph in scope for DKGSwarm's current marketing work.
 
 ## 4. Ownership, governance, and status
 
-DKGSwarm retains project leadership and operating autonomy. Affiliation does not transfer the domain, website, donation route, accounts, OAuth clients, graph, private state, deployment credentials, or policy authority. If the repository is later transferred, GitHub repository ownership changes, but project leadership and operating responsibilities remain with the named maintainers under the agreed terms. Once OpenDKG-owned, the adopted governance and contribution rules apply to the repository unless a repository-specific written exception is approved and recorded under those rules. No such exception is approved here; project autonomy is not an exemption from the adopted policy.
+DKGSwarm retains project leadership and operating autonomy. Affiliation does not transfer the domain, website, donation route, accounts, OAuth clients, graph, private state, deployment credentials, or policy authority. The repository is now OpenDKG-owned. GitHub repository ownership changed, but project leadership and operating responsibilities remain with the named maintainers under the agreed terms. As an OpenDKG-owned repository, the adopted governance and contribution rules apply unless a repository-specific written exception is approved and recorded under those rules. No such exception is approved here; project autonomy is not an exemption from the adopted policy.
 
 The governance model reflected here is:
 
@@ -83,13 +85,13 @@ The governance model reflected here is:
 - GitHub discussion and a short governance document come first. Domain, website, and Open Collective arrangements remain open decisions.
 - Extending `trac-marketing` or adding a separate OpenDKG context graph is an owner choice and later design, not a current commitment.
 
-The existing OpenDKG founder adoption record shows the initial three-founder acceptance under the [adopted governance](https://github.com/OpenDKG/.github/blob/d56279b4f3c25dd8f9e68699d61be23a0c7a6b07/GOVERNANCE.md) and [Contributor Agreement](https://github.com/OpenDKG/.github/blob/d56279b4f3c25dd8f9e68699d61be23a0c7a6b07/CONTRIBUTOR_AGREEMENT.md). It is not approval of this integration proposal. OpenDKG has not endorsed DKGSwarm as its community layer. The adopted text's specific requirement for a newly transferred repository is a provenance and governance review (§3); it does not state a separate council vote for a repository transfer. §2's two-active-council-member and handover-plan rule is scoped to adding organization owners, changing account custody, or changing domain/service control.
+The existing OpenDKG founder adoption record shows the initial three-founder acceptance under the [adopted governance](https://github.com/OpenDKG/.github/blob/d56279b4f3c25dd8f9e68699d61be23a0c7a6b07/GOVERNANCE.md) and [Contributor Agreement](https://github.com/OpenDKG/.github/blob/d56279b4f3c25dd8f9e68699d61be23a0c7a6b07/CONTRIBUTOR_AGREEMENT.md). It is not a separate endorsement of DKGSwarm's content or marketing role; repository custody is not an endorsement. The adopted text's specific requirement for a newly transferred repository is a provenance and governance review (§3); it does not state a separate council vote for a repository transfer. §2's two-active-council-member and handover-plan rule is scoped to adding organization owners, changing account custody, or changing domain/service control.
 
 Founders may exchange names or contact details privately if they choose. This repository, its issues, and any shared graph must not collect, store, or publish personal names, phone numbers, email addresses, identity documents, donor data, credentials, or other private records.
 
 ## 5. Trust and migration contract
 
-DKGSwarm treats these conditions as the required baseline for any affiliation or transfer. They are not defaults that a discussion comment, graph entry, or umbrella vote can silently change.
+DKGSwarm treats these conditions as the required baseline for the affiliation and completed transfer. They are not defaults that a discussion comment, graph entry, or umbrella vote can silently change.
 
 | Area | Requirement |
 | --- | --- |
@@ -121,7 +123,7 @@ A future channel profile must separate allowed guidance, locally verified runtim
 
 ## 6. Staged migration checklist
 
-Every stage needs explicit written approval from the DKGSwarm maintainer. The owner approved the repository move on 2026-11-08. Under adopted `GOVERNANCE.md` §3, a newly transferred repository requires a provenance and governance review; §2's two-active-council-member and handover-plan rule is scoped to adding organization owners, changing account custody, or changing domain/service control, so it is not restated here as a repository-transfer vote. A repository-specific written exception must be recorded before it is relied on. A checked box in this draft is not approval.
+Every stage needs explicit written approval from the DKGSwarm maintainer. The owner approved the repository move and it completed on 2026-11-08. Under adopted `GOVERNANCE.md` §3, a newly transferred repository requires a provenance and governance review; §2's two-active-council-member and handover-plan rule is scoped to adding organization owners, changing account custody, or changing domain/service control, so it is not restated here as a repository-transfer vote. A repository-specific written exception must be recorded before it is relied on. A checked box in this draft is not approval.
 
 ### Stage 0 — Proposal and review
 
@@ -129,7 +131,7 @@ Every stage needs explicit written approval from the DKGSwarm maintainer. The ow
 - [x] Verify the repository, public endpoint, OAuth metadata, graph/policy identity, deployment status, and OpenDKG founder record.
 - [x] Confirm no runtime, domain, policy, funding, credential, or permission change was made.
 - [x] DKGSwarm owner review and approval of the move and the `OpenDKG/dkgswarm` target (2026-11-08).
-- [ ] Record the §3 provenance and governance review evidence with the transfer.
+- [x] Record the §3 provenance and governance review evidence with the transfer (PR #3 and `THIRD_PARTY_NOTICES.md`).
 - [x] Choose repository transfer (D-003).
 
 **Exit:** owner approval recorded in this document. **Rollback:** discard the branch; no external effect.
@@ -137,7 +139,7 @@ Every stage needs explicit written approval from the DKGSwarm maintainer. The ow
 ### Stage 1 — Public affiliation without transfer
 
 - [ ] Add DKGSwarm to the approved OpenDKG project or affiliation list, if one exists, or publish a short shared issue. Label it community/affiliated, not OpenDKG-owned.
-- [ ] Link this document from the DKGSwarm README with approved-move, transfer-pending status visible.
+- [x] Link this document from the README with the verified OpenDKG-project status visible.
 - [ ] Publish the scope, non-endorsement statement, maintainers, and contact route in a public place that excludes private data.
 - [ ] Confirm factual use of the OpenDKG name only. No branding overhaul or implied endorsement.
 - [ ] Keep the domain, site, MCP endpoint, graph, donation route, and accounts unchanged.
@@ -155,25 +157,25 @@ Every stage needs explicit written approval from the DKGSwarm maintainer. The ow
 
 **Exit:** owner license decision recorded; complete rights-holder and third-party notice list still to finish. **Rollback:** none needed if no transfer or relicensing has occurred.
 
-### Stage 3 — Repository transfer
+### Stage 3 — Repository transfer (completed 2026-11-08)
 
-The owner approved the transfer target and move on 2026-11-08; that approval is recorded in this document and the owner controls the source repository. Adopted `GOVERNANCE.md` §3 requires a provenance and governance review for a newly transferred repository; it does not state a separate council vote for repository transfers. §2's two-active-council-member and handover-plan rule applies to adding organization owners, changing account custody, or changing domain/service control, which is separate from this repository move. The transfer changes GitHub custody only; it does not retroactively license prior history or move runtime, domain, accounts, OAuth, graph, or policy. Remaining release gates: provenance review evidence, the `ai-review/evidence` provider, branch protections, and the source-drift decision.
+The owner approved the transfer target and move on 2026-11-08; that approval is recorded in this document, and the owner controlled the source repository at approval time. Adopted `GOVERNANCE.md` §3 requires a provenance and governance review for a newly transferred repository; it does not state a separate council vote for repository transfers. §2's two-active-council-member and handover-plan rule applies to adding organization owners, changing account custody, or changing domain/service control, which is separate from this repository move. The transfer changes GitHub custody only; it does not retroactively license prior history or move runtime, domain, accounts, OAuth, graph, or policy. Recorded gates: provenance review evidence (PR #3), the `ai-review/evidence` provider retained, branch protections preserved, and the source-drift decision still open.
 
-- [ ] Confirm the exact target is `OpenDKG/dkgswarm` and record the §3 provenance and governance review evidence with the transfer. The owner approval is recorded; execution still requires the post-transfer checks below.
-- [ ] Transfer from `brxtrac/dkgswarm`; preserve branches, tags, issues, pull requests, and history. Do not copy source into a monorepo.
-- [ ] Record the transferred repository's coverage under the adopted governance and Contributor Agreement, and any repository-specific written exception. No exception is approved in this draft.
-- [ ] Recreate or verify branch protection, required checks, Actions permissions, environments, repository secrets, deploy keys, repository webhooks, Pages, wiki/projects settings, and installed GitHub Apps.
-- [ ] Identify the provider of the required `ai-review/evidence` check and confirm it survives the transfer. Do not silently drop the check.
-- [ ] Set least-privilege teams and permissions. DKGSwarm maintainers retain the agreed admin role; no automatic Organization Owner grant. An actual account-custody or domain/service-control change still needs the §2 approvals; repository permissions alone do not.
-- [ ] Update repository namespace references only: `package.json` repository/bugs/homepage fields, README links, clone URLs, issue links, Actions badge/reference paths, and documentation links.
+- [x] Confirm the exact target `OpenDKG/dkgswarm` and record the §3 provenance and governance review evidence. The target was unclaimed before the move; repository id stayed `1391410974`.
+- [x] Transfer from `brxtrac/dkgswarm`; branches, tags, issues, pull requests, and history are preserved. No monorepo copy.
+- [x] Record the transferred repository's coverage under the adopted governance and Contributor Agreement in this document. No repository-specific exception is claimed.
+- [x] Verified after transfer: `main` protection and all three required checks preserved; Actions enabled with `allowed_actions: all`; no environments, deploy keys, webhooks, or Pages; secret scanning and push protection restored to enabled; wiki/projects enabled; discussions disabled.
+- [x] `ai-review/evidence` survived as a commit status (`app_id: null`); the existing recorder token has admin access. The next protected PR exercises publication after transfer.
+- [ ] Set least-privilege teams and permissions. The existing organization default permission is `admin`, so organization members receive admin on this public repository; narrowing that needs a separate organization-level decision, not this move. An actual account-custody or domain/service-control change still needs the §2 approvals.
+- [x] Update current repository namespace pointers only: `package.json` repository/bugs fields and README/docs/site status copy in this change. Historical PR links are left as historical and redirect.
 - [ ] Preserve production webhook destinations, OAuth resource/issuer/authorization/token/registration endpoints, redirect URIs, and existing client configuration. Do not revive retired webhook routes.
 - [ ] Add `SECURITY.md`, issue templates, `CODEOWNERS`, or Dependabot only if separately approved. Keep the existing public contact route until replaced.
 - [ ] Record that the adopted Contributor Agreement covers future authorized contributions to the repository once OpenDKG-owned, unless a repository-specific written exception is approved and recorded. DCO sign-off applies under OpenDKG `CONTRIBUTING`; decide separately whether to enable CLA automation. Do not retroactively bind prior contributions. These obligations apply under the adopted policy even where GitHub does not technically enforce them.
-- [ ] Confirm the repository namespace redirect from `brxtrac/dkgswarm` to `OpenDKG/dkgswarm`, and that existing clones, links, and Actions references still resolve.
+- [x] Confirmed `https://github.com/brxtrac/dkgswarm` returns HTTP 301 to `OpenDKG/dkgswarm`; old and new git remotes resolve `main` `70b2cb2`.
 - [ ] Run CI on a clean checkout, including root and collector tests.
-- [ ] Make no deployment, DNS, OAuth, graph, or policy change during the repository transfer.
+- [x] No deployment, DNS, OAuth, graph, or policy change was made before, during, or after the repository transfer.
 
-**Exit:** transferred repository passes CI, old URLs redirect, permissions match the approved list. **Rollback:** transfer back to the original owner, restore permissions and checks, revert metadata. GitHub repository transfers are generally reversible; confirm redirect behavior and preserve all history.
+**Exit:** transfer completed, `main` CI passed on the merge commit, old URLs redirect, protections and scanning verified. **Rollback:** transfer back to the original owner, restore permissions and checks, revert metadata. GitHub repository transfers are generally reversible; confirm redirect behavior and preserve all history.
 
 ### Stage 4 — Umbrella operating role
 
@@ -228,9 +230,9 @@ Release gates remain separate: the §3 provenance and governance review, license
 
 | ID | Decision | Proposed position | Status | Evidence / owner question |
 | --- | --- | --- | --- | --- |
-| D-001 | Integration status | DKGSwarm becomes an OpenDKG-affiliated front-facing community marketing, discovery, and coordination layer for OpenDKG apps. | Owner-approved; OpenDKG endorsement not recorded | This document; no OpenDKG endorsement claimed. |
+| D-001 | Integration status | DKGSwarm is an OpenDKG project serving as the front-facing community marketing, discovery, and coordination layer for OpenDKG apps. | Completed repository move; no content endorsement | This document; no OpenDKG, OriginTrail, TRAC, or Umanitek endorsement claimed. |
 | D-002 | Project autonomy | DKGSwarm keeps project leadership, domain, accounts, graph, and deploy authority; GitHub repository ownership follows D-003. | Owner-confirmed | Recorded here. |
-| D-003 | Repository shape | Transfer to `OpenDKG/dkgswarm`; no monorepo copy. | Approved by owner; transfer pending | Owner approval 2026-11-08; target absent at inspection. |
+| D-003 | Repository shape | Transferred to `OpenDKG/dkgswarm`; no monorepo copy. | Completed 2026-11-08 | Repository id `1391410974`; old namespace redirects. |
 | D-004 | License and IP | MIT for this project's work; root `LICENSE`, package metadata, and lockfile aligned; merged PR #1 contribution's ISC basis and third-party notices preserved in `THIRD_PARTY_NOTICES.md`. | Decided by owner; rights-holder/asset list still open | Owner selected MIT; no retroactive MIT claim over the external contribution. |
 | D-005 | Domain and website | Keep `dkgswarm.com` and the current site unless a separate migration is approved. | Open | Custody, DNS, TLS, and redirects must be named. |
 | D-006 | Donations and funds | Project donations stay separate from umbrella funds; no equal split assumed; publish rules before new umbrella/shared funding. Existing project donations remain independent. | Proposed policy | No umbrella treasury or Open Collective is created. |
@@ -254,18 +256,18 @@ The existing support model is retained:
 - Never ask a reporter to paste access tokens, writer codes, node tokens, private keys, or personal records.
 - Security-sensitive reports follow the repository's current public contact route until a replacement is approved.
 
-While this repository remains outside OpenDKG ownership, its current contribution rules remain in force. If transferred, the adopted Contributor Agreement covers future authorized contributions unless a recorded repository-specific exception applies; DCO sign-off applies under OpenDKG `CONTRIBUTING`. CLA automation is a separate decision and is not active merely because this draft exists. Applicability is separate from technical enforcement; missing automation does not waive the policy. This draft does not retroactively cover prior contributions.
+Now that the repository is OpenDKG-owned, the adopted Contributor Agreement covers future authorized contributions unless a recorded repository-specific exception applies; DCO sign-off applies under OpenDKG `CONTRIBUTING`. CLA automation is a separate decision and is not active merely because this draft exists. Applicability is separate from technical enforcement; missing automation does not waive the policy. This draft does not retroactively cover prior contributions.
 
 ## 9. Blockers and owner questions
 
 1. **Source drift:** live site and deployed MCP source differ from repository files. Which copy is authoritative, and who reconciles it before the repository is described as the source of record?
 2. **License:** resolved — the owner selected MIT and the root `LICENSE` and package metadata are aligned. Open; confirm notices for bundled third-party media and record the merged external contribution's provenance without claiming a retroactive assignment.
-3. **Target and review evidence:** `OpenDKG/dkgswarm` is the owner-approved target. Record the §3 provenance and governance review evidence with the transfer; no separate council transfer vote is stated in the adopted text.
-4. **Affiliation vs transfer:** the owner chose repository transfer; stage 1 affiliation alone is no longer the open choice.
+3. **Target and review evidence:** resolved. `OpenDKG/dkgswarm` is the canonical repository; the §3 provenance and governance review is recorded in PR #3 and `THIRD_PARTY_NOTICES.md`; no separate council transfer vote is stated in the adopted text.
+4. **Affiliation vs transfer:** resolved. The owner chose and completed the repository transfer.
 5. **Domain, website, Open Collective:** who holds custody, and are any of these in scope now? This draft assumes they remain separate.
 6. **Donations:** confirm the existing project donation route stays project-controlled. No umbrella funds or split formula are approved.
-7. **External check:** who operates the required `ai-review/evidence` status, and will it survive a repository transfer?
-8. **Contribution terms:** if transferred, how will DCO sign-off and Contributor Agreement acceptance be recorded, and should CLA automation be enabled? Who reviews prior contributions and any repository-specific exception?
+7. **External check:** resolved for continuity. The `ai-review/evidence` context survived, and the existing recorder token has admin access; the next protected PR tests publication under OpenDKG.
+8. **Contribution terms:** how will DCO sign-off and Contributor Agreement acceptance be recorded now that the repository is OpenDKG-owned, and should CLA automation be enabled? Who reviews prior contributions and any repository-specific exception?
 9. **Security contact:** what public security route replaces or supplements the current one without publishing personal details?
 10. **Usage claims:** no verified connected-agent or membership count is used in this draft. Any public marketing claim must be separately evidenced.
 11. **Muse and channel scope:** what exact Muse URL/product, intended platforms and accounts, and per-account operator permissions?
@@ -275,4 +277,4 @@ While this repository remains outside OpenDKG ownership, its current contributio
 
 This change updates the owner-facing docs, public site copy, the MIT license metadata, and the public-copy guard test. It was checked for path allowlist, `git diff --check`, local link/path validity, absence of credential or personal-contact patterns, and consistency with the inspected repository, public endpoint, v19 pin, and adopted OpenDKG governance and Contributor Agreement at `d56279b4f3c25dd8f9e68699d61be23a0c7a6b07`. The official statements in the channel matrix were checked against the linked pages on 2026-11-07; the Reddit Spam page returned HTTP 403 to direct fetch, so its multiple-account statement was checked against indexed official page text. No product or runtime capability is claimed beyond those sources. Root and collector tests run on Node.js 22 and 24; no workflow, dependency, policy, or runtime change is made.
 
-Limitations: production was inspected read-only; no service was restarted or edited. Not verified here: the exact Muse product/runtime, Grok Bot DKG OAuth or scheduled handshake, posting capability, Reddit or TikTok approvals, external-contribution provenance review, third-party asset notices, the §3 provenance and governance review record, the `ai-review/evidence` provider, org-level Actions and secrets without `admin:org`, and transfer execution. No independent review is claimed by this document.
+Limitations: production was inspected read-only; no service was restarted or edited. Not verified here: the exact Muse product/runtime, Grok Bot DKG OAuth or scheduled handshake, posting capability, Reddit or TikTok approvals, third-party asset notices, the next post-transfer protected PR and evidence publication, org-level Actions and secrets without `admin:org`, and the source-drift decision. No independent review is claimed by this document.
