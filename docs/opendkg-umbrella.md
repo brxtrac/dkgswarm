@@ -2,14 +2,14 @@
 
 **Status: draft proposal. Not approved, not published, and not an OpenDKG endorsement.**
 
-This document proposes that DKGSwarm become an OpenDKG-affiliated project and the proposed OpenDKG marketing harness. DKGSwarm keeps its project leadership, domain, accounts, graph scope, and deploy authority. No repository transfer, runtime change, funding arrangement, or governance change is made by this document.
+This document proposes that DKGSwarm become an OpenDKG-affiliated project and the proposed OpenDKG front-facing community marketing, discovery, and coordination layer for OpenDKG apps. DKGSwarm keeps its existing OriginTrail, TRAC, and Umanitek mission, project leadership, domain, accounts, graph scope, and deploy authority. No repository transfer, runtime change, funding arrangement, or governance change is made by this document.
 
 | Field | Value |
 | --- | --- |
 | Proposal date | 2026-11-07 |
 | Inspection basis | `brxtrac/dkgswarm` at `87059a5b38e9f693121009d2b21f43b652b7b3f8` on `main` |
 | Proposed umbrella | [OpenDKG](https://github.com/OpenDKG) |
-| Proposed target repository | `OpenDKG/dkgswarm` (does not exist at inspection; transfer only if separately approved) |
+| Proposed target repository | `OpenDKG/dkgswarm` (verified absent on 2026-11-08; transfer only if separately approved) |
 | Current repository owner | `brxtrac/dkgswarm` |
 | Change scope | Documentation only. No code, workflow, dependency, deployment, policy, domain, or permission change. |
 
@@ -17,7 +17,7 @@ This document proposes that DKGSwarm become an OpenDKG-affiliated project and th
 
 ## 1. Purpose and proposed role
 
-DKGSwarm currently operates a public site, agent onboarding flow, remote MCP connector, `trac-marketing` context graph, owner-policy release process, and collector/curator services. The proposal is to use that existing operating surface as the OpenDKG marketing harness: coordinate public marketing context, agent onboarding, and content workflows that already exist, without acquiring new graph, account, posting, or policy authority.
+DKGSwarm currently operates a public site, agent onboarding flow, remote MCP connector, `trac-marketing` context graph, owner-policy release process, and collector/curator services. The proposal is to use that existing operating surface as the OpenDKG front-facing community marketing, discovery, and coordination layer: help people find and understand OpenDKG apps and coordinate public marketing context, agent onboarding, and content workflows that already exist, without acquiring new graph, account, posting, or policy authority. The existing OriginTrail, TRAC, and Umanitek mission remains intact.
 
 This is an affiliation and operating-role proposal, not a monorepo merger. History and project independence are preserved. The umbrella should list or affiliate the project first; a later repository transfer is a separate decision.
 
@@ -81,7 +81,7 @@ The governance proposal reflected here is:
 - GitHub discussion and a short governance document come first. Domain, website, and Open Collective arrangements remain open decisions.
 - Extending `trac-marketing` or adding a separate OpenDKG context graph is an owner choice and later design, not a current commitment.
 
-The existing OpenDKG founder adoption record shows the initial three-founder acceptance under the [adopted governance](https://github.com/OpenDKG/.github/blob/d56279b4f3c25dd8f9e68699d61be23a0c7a6b07/GOVERNANCE.md) and [Contributor Agreement](https://github.com/OpenDKG/.github/blob/d56279b4f3c25dd8f9e68699d61be23a0c7a6b07/CONTRIBUTOR_AGREEMENT.md). It is not approval of this integration proposal. OpenDKG has not endorsed DKGSwarm as its marketing harness, and no OpenDKG council approval for a repository transfer has been recorded in this work.
+The existing OpenDKG founder adoption record shows the initial three-founder acceptance under the [adopted governance](https://github.com/OpenDKG/.github/blob/d56279b4f3c25dd8f9e68699d61be23a0c7a6b07/GOVERNANCE.md) and [Contributor Agreement](https://github.com/OpenDKG/.github/blob/d56279b4f3c25dd8f9e68699d61be23a0c7a6b07/CONTRIBUTOR_AGREEMENT.md). It is not approval of this integration proposal. OpenDKG has not endorsed DKGSwarm as its community layer, and no OpenDKG council approval for a repository transfer has been recorded in this work.
 
 Founders may exchange names or contact details privately if they choose. This repository, its issues, and any shared graph must not collect, store, or publish personal names, phone numbers, email addresses, identity documents, donor data, credentials, or other private records.
 
@@ -226,7 +226,7 @@ Release gates remain separate: recorded governance approval, license and history
 
 | ID | Decision | Proposed position | Status | Evidence / owner question |
 | --- | --- | --- | --- | --- |
-| D-001 | Integration status | Propose that DKGSwarm become an OpenDKG-affiliated marketing harness. | Proposed | This document. Needs both projects' approval. |
+| D-001 | Integration status | Propose that DKGSwarm become an OpenDKG-affiliated front-facing community marketing, discovery, and coordination layer for OpenDKG apps. | Proposed | This document. Needs both projects' approval. |
 | D-002 | Project autonomy | DKGSwarm keeps project leadership, domain, accounts, graph, and deploy authority; GitHub repository ownership follows D-003. | Proposed baseline | Must be confirmed in the approval record. |
 | D-003 | Repository shape | Affiliation first; transfer to `OpenDKG/dkgswarm` only if separately approved. No monorepo copy. | Open | Target repository does not exist at inspection. |
 | D-004 | License and IP | Resolve `ISC` metadata, missing `LICENSE`, external contributions, and asset rights before transfer. | Open | Do not assume Apache-2.0 applies retroactively. |
