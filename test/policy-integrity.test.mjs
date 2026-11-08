@@ -166,11 +166,14 @@ test("publisher restores only exact pinned bytes and leaves the pointer untouche
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-function runPublisher(file, url, dir, pointerPath) {
+function runPublisher(file, url, dir, pointerPath, { preload } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [fileURLToPath(new URL("../publish-policy.mjs", import.meta.url)), file], {
+    const script = fileURLToPath(new URL("../publish-policy.mjs", import.meta.url));
+    const args = preload ? ["--require", preload, script, file] : [script, file];
+    const child = spawn(process.execPath, args, {
       env: { PATH: "/usr/local/bin:/usr/bin:/bin", HOME: dir, TMPDIR: dir,
-        DKG_MCP_POLICY_CURRENT: pointerPath, DKG_API_TOKEN: "test-only", DKG_API_URL: url },
+        DKG_MCP_POLICY_CURRENT: pointerPath, DKG_API_TOKEN: "test-only", DKG_API_URL: url,
+        ...(preload ? { FAIL_RENAME_TARGET: pointerPath } : {}) },
     });
     let stdout = "", stderr = "";
     child.stdout.on("data", (chunk) => { stdout += chunk; });
@@ -271,5 +274,37 @@ test("publisher failures after create, share or verification leave pointer bytes
     await failed({ initialShared: "empty", createStatus: 500, working: "empty", finalShared: "empty" }, /Create failed/);
     await failed({ initialShared: "empty", working: "exact", shareStatus: 500, finalShared: "empty" }, /Share failed/);
     await failed({ initialShared: "empty", working: "exact", finalShared: "tampered" }, /integrity mismatch/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("publisher removes its temp pointer after a deterministic rename failure", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "policy-publish-rename-"));
+  const pointerPath = path.join(dir, "policy-current.json");
+  const pointerBytes = Buffer.from(JSON.stringify(current) + "\n");
+  fs.writeFileSync(pointerPath, pointerBytes);
+  const next = { ...policy, version: current.version + 1 };
+  const nextPath = path.join(dir, "policy-next.json");
+  fs.writeFileSync(nextPath, JSON.stringify(next));
+  const preload = path.join(dir, "fail-rename.cjs");
+  fs.writeFileSync(preload, [
+    'const fs = require("node:fs");',
+    "const rename = fs.renameSync;",
+    "fs.renameSync = (from, to, ...rest) => {",
+    '  if (String(to) === process.env.FAIL_RENAME_TARGET) {',
+    '    const error = new Error("fixture rename failure");',
+    '    error.code = "EACCES";',
+    "    throw error;",
+    "  }",
+    "  return rename(from, to, ...rest);",
+    "};",
+  ].join("\n"));
+  try {
+    const mock = await publishMock(t, { policy: next, initialShared: "exact", finalShared: "exact" });
+    const result = await runPublisher(nextPath, mock.url, dir, pointerPath, { preload });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /fixture rename failure/);
+    assert.match(result.stderr, /EACCES/);
+    assert.deepEqual(fs.readFileSync(pointerPath), pointerBytes);
+    assert.deepEqual(fs.readdirSync(dir).filter((name) => name.startsWith("policy-current.json.") && name.endsWith(".tmp")), []);
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
