@@ -6,11 +6,11 @@ const root = new URL('../', import.meta.url);
 const read = (name) => fs.readFileSync(new URL(name, root), 'utf8');
 const publicCopy = ['README.md', 'site/index.html', 'site/contexts.html', 'site/llms.txt'];
 
-test('public copy describes OpenDKG as proposed, not completed', () => {
+test('public copy describes an owner-approved move, not a completed transfer', () => {
   for (const file of publicCopy) {
     const text = read(file);
     assert.match(text, /OpenDKG/, file);
-    assert.match(text, /propos/i, file);
+    assert.match(text, /transfer/i, file);
     assert.doesNotMatch(text, /(?:repository|repo|project) is (?:now )?OpenDKG-owned|owned by OpenDKG|transferred to OpenDKG|OpenDKG has endorsed|official OpenDKG (?:project|marketing)/i, file);
   }
 });
@@ -34,4 +34,15 @@ test('OpenDKG references point to the public organization and local proposal doc
   }
   assert.equal(fs.existsSync(new URL('docs/opendkg-umbrella.md', root)), true);
   assert.match(read('README.md'), /docs\/opendkg-umbrella\.md/);
+});
+
+test('project license is declared consistently as MIT with a root LICENSE', () => {
+  const license = read('LICENSE');
+  assert.match(license, /^MIT License/);
+  assert.match(license, /Copyright \(c\) 2025 BRX/);
+  for (const file of ['package.json', 'collector/package.json']) {
+    assert.equal(JSON.parse(read(file)).license, 'MIT', file);
+  }
+  assert.equal(JSON.parse(read('package-lock.json')).packages[''].license, 'MIT');
+  assert.equal(JSON.parse(read('collector/package-lock.json')).packages[''].license, 'MIT');
 });
