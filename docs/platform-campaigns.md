@@ -241,9 +241,9 @@ Draft documents cannot be used as active policy. Unverified generic graph text i
 
 ## 11. Transfer and affiliation boundaries
 
-The owner has approved the repository move to `OpenDKG/dkgswarm` and selected MIT as this project's license. The transfer is not executed. Adopted `GOVERNANCE.md` §3 requires a provenance and governance review for a newly transferred repository; §2's two-active-council-member and handover-plan rule is scoped to adding organization owners, changing account custody, or changing domain/service control. Open items: provenance review evidence, the external-contribution and third-party notice record, the required `ai-review/evidence` check provider, and the source-drift decision.
+The repository move is complete: `OpenDKG/dkgswarm` is canonical, `main` is `70b2cb2e408b1b00e167b01aee5fee4dfef3c896`, and PR #3 records the protected merge. The owner selected MIT as this project's license. Adopted `GOVERNANCE.md` §3 required a provenance and governance review for the newly transferred repository; that review is recorded in PR #3 and `THIRD_PARTY_NOTICES.md`, including the merged PR #1 ISC basis. The `ai-review/evidence` check survived the move; the source-drift decision remains open. No repository-specific exception is claimed.
 
-This section is documentation only and does not transfer the repository, relabel the live service, or alter organization permissions or credentials. It uses approved-move, transfer-pending wording and makes no endorsed or transfer-complete claim. Do not retry missing `admin:org` organization Actions or secrets endpoints.
+This section is documentation only and does not change the live service, organization permissions, or credentials. It records the completed repository move without claiming an OpenDKG or OriginTrail endorsement, production deployment, or active campaign. Do not retry missing `admin:org` organization Actions or secrets endpoints.
 
 ## 12. Recommendation shortlist
 

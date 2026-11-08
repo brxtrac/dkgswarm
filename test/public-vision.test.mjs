@@ -15,6 +15,16 @@ test('public copy records the completed OpenDKG move without endorsement claims'
   }
 });
 
+test('status copy records the completed transfer with no stale pending wording', () => {
+  for (const file of [...publicCopy, 'docs/platform-campaigns.md']) {
+    assert.doesNotMatch(read(file), /transfer (?:is |was )?(?:not executed|pending|not yet executed)|not yet executed|approved-move, transfer-pending/i, file);
+  }
+  const platform = read('docs/platform-campaigns.md');
+  assert.match(platform, /repository move is complete/);
+  assert.match(platform, /70b2cb2e408b1b00e167b01aee5fee4dfef3c896/);
+  assert.match(platform, /PR #3/);
+});
+
 test('public vision preserves the existing mission and permission boundaries', () => {
   const readme = read('README.md');
   for (const term of ['OriginTrail', 'TRAC', 'Umanitek']) assert.match(readme, new RegExp(term), 'README');
