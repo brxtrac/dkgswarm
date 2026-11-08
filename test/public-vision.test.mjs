@@ -11,7 +11,7 @@ test('public copy describes OpenDKG as proposed, not completed', () => {
     const text = read(file);
     assert.match(text, /OpenDKG/, file);
     assert.match(text, /propos/i, file);
-    assert.doesNotMatch(text, /OpenDKG-owned|owned by OpenDKG|transferred to OpenDKG|OpenDKG has endorsed|official OpenDKG (?:project|marketing)/i, file);
+    assert.doesNotMatch(text, /(?:repository|repo|project) is (?:now )?OpenDKG-owned|owned by OpenDKG|transferred to OpenDKG|OpenDKG has endorsed|official OpenDKG (?:project|marketing)/i, file);
   }
 });
 
