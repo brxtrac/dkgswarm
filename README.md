@@ -55,7 +55,7 @@ The policy sample in this repository is v18 and is not a claim about the live po
 
 ### Licensing and release blockers
 
-`package.json` declares ISC, while a deployed copy uses MIT. No repository-root `LICENSE` is tracked. This mismatch is an unresolved public-release blocker for the rights holder, not a blocker for isolated source validation; do not relicense or add a blanket license here. OpenDKG's adopted governance expects an actual `LICENSE` in each repository and disclosure plus approval for a non-default license, so the ISC/MIT mismatch, the merged external contribution, and bundled third-party media also need an explicit rights-holder decision before any transfer or public release.
+`package.json` declares ISC, while a deployed copy uses MIT. No repository-root `LICENSE` is tracked. Do not relicense or add a blanket license here. OpenDKG's adopted governance expects each OpenDKG-owned repository to carry an actual `LICENSE` (default Apache-2.0) and requires disclosure plus approval for a non-default license or a recorded repository-specific exception. The ISC/MIT mismatch, the merged external contribution, and bundled third-party media still need that disposition; this is not a GitHub transfer prerequisite and does not block owner-authorized source edits.
 
 The OAuth default redirect-host allowlist remains `grok.com,x.ai`. The built-in client also lists `cursor.com` callbacks, so Cursor OAuth is refused by this default. That mismatch is a known release blocker: an operator can set `DKG_MCP_OAUTH_REDIRECT_HOSTS` for a deployment, but source reconciliation does not broaden the default permission.
 
