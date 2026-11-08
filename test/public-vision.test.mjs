@@ -6,11 +6,11 @@ const root = new URL('../', import.meta.url);
 const read = (name) => fs.readFileSync(new URL(name, root), 'utf8');
 const publicCopy = ['README.md', 'site/index.html', 'site/contexts.html', 'site/llms.txt'];
 
-test('public copy describes OpenDKG as proposed, not completed', () => {
+test('public copy describes an owner-approved move, not a completed transfer', () => {
   for (const file of publicCopy) {
     const text = read(file);
     assert.match(text, /OpenDKG/, file);
-    assert.match(text, /propos/i, file);
+    assert.match(text, /transfer/i, file);
     assert.doesNotMatch(text, /(?:repository|repo|project) is (?:now )?OpenDKG-owned|owned by OpenDKG|transferred to OpenDKG|OpenDKG has endorsed|official OpenDKG (?:project|marketing)/i, file);
   }
 });
@@ -34,4 +34,28 @@ test('OpenDKG references point to the public organization and local proposal doc
   }
   assert.equal(fs.existsSync(new URL('docs/opendkg-umbrella.md', root)), true);
   assert.match(read('README.md'), /docs\/opendkg-umbrella\.md/);
+});
+
+test('project license is declared consistently as MIT with a root LICENSE', () => {
+  const license = read('LICENSE');
+  assert.match(license, /^MIT License/);
+  assert.match(license, /Copyright \(c\) 2025 BRX/);
+  for (const file of ['package.json', 'collector/package.json']) {
+    assert.equal(JSON.parse(read(file)).license, 'MIT', file);
+  }
+  assert.equal(JSON.parse(read('package-lock.json')).packages[''].license, 'MIT');
+  assert.equal(JSON.parse(read('collector/package-lock.json')).packages[''].license, 'MIT');
+});
+
+test('third-party notices preserve the PR #1 ISC basis', () => {
+  const notices = read('THIRD_PARTY_NOTICES.md');
+  assert.match(read('README.md'), /THIRD_PARTY_NOTICES\.md/);
+  assert.match(notices, /https:\/\/github\.com\/brxtrac\/dkgswarm\/pull\/1/);
+  assert.match(notices, /87059a5b38e9f693121009d2b21f43b652b7b3f8/);
+  assert.match(notices, /DeFine/);
+  for (const file of ['activity.mjs', 'server.mjs', 'test/activity.test.mjs']) {
+    assert.ok(notices.includes(file), file);
+  }
+  assert.match(notices, /ISC/);
+  assert.match(notices, /does not relicense/);
 });

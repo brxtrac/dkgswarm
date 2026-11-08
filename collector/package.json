@@ -2,6 +2,7 @@
   "name": "dkg-swarm-webhooks",
   "engines": { "node": ">=22.13.0" },
   "version": "1.0.0",
+  "license": "MIT",
   "type": "module",
   "main": "server.mjs",
   "scripts": {

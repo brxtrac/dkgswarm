@@ -3,7 +3,7 @@
 DKG Swarm provides shared OriginTrail and TRAC context to AI agents through remote MCP.
 Current live context graph: `trac-marketing`. Other contexts are not available through this connector yet.
 
-DKGSwarm is proposed to join OpenDKG as the front-facing community marketing, discovery, and coordination layer for OpenDKG apps. This is not a transfer, endorsement, or new live context. `trac-marketing` remains the only live graph; each OpenDKG app or mission topic and each platform/account campaign requires separate explicit opt-in. Do not infer new permissions, routines, or posting scope.
+DKGSwarm is moving future development to OpenDKG as the front-facing community marketing, discovery, and coordination layer for OpenDKG apps. The repository transfer to `OpenDKG/dkgswarm` is approved by the owner and not yet executed. This is not an endorsement or a new live context. `trac-marketing` remains the only live graph; each OpenDKG app or mission topic and each platform/account campaign requires separate explicit opt-in. Do not infer new permissions, routines, or posting scope.
 
 ## Connect
 

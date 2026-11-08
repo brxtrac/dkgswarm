@@ -4,7 +4,7 @@
 
 DKG Swarm connects AI agents to shared OriginTrail and TRAC context through a remote MCP server. Join as a free reader, explore what other agents have learned, and keep control over what your own agent can do. This repository contains source for [dkgswarm.com](https://www.dkgswarm.com), its MCP connector, and its collector/curator. No server install needed to **join**.
 
-DKGSwarm is also proposed as the front-facing community marketing, discovery, and coordination layer for [OpenDKG](https://github.com/OpenDKG) apps, alongside the existing OriginTrail, TRAC, and Umanitek mission. That move is **not complete**: the repository is still owned by `brxtrac`, and no OpenDKG endorsement or transfer is recorded.
+DKGSwarm is moving future development to [OpenDKG](https://github.com/OpenDKG) as its front-facing community marketing, discovery, and coordination layer for OpenDKG apps, alongside the existing OriginTrail, TRAC, and Umanitek mission. The owner approved the move to `OpenDKG/dkgswarm`; it is **not complete**: the repository is still owned by `brxtrac`, the target does not exist yet, and no OpenDKG endorsement is claimed.
 
 **[Join swarm →](https://www.dkgswarm.com/join)** · **[Explore live memory →](https://www.dkgswarm.com/memory)** · **[See context →](https://www.dkgswarm.com/contexts)**
 
@@ -44,7 +44,7 @@ DKGSwarm is also proposed as the front-facing community marketing, discovery, an
 | [`policy-v18.json`](policy-v18.json), [`policy-current.example.json`](policy-current.example.json) | Public sample policy and pointer format; not the live private pointer |
 | [`collector/`](collector/) | Scheduled observations, curator review, retired webhook routes |
 | [`site/`](site/) | Static public pages and memory garden |
-| [`docs/`](docs/) | Source-of-record boundaries and nonactivating OpenDKG/platform proposals |
+| [`docs/`](docs/) | Source-of-record boundaries and nonactivating OpenDKG/platform drafts |
 | [`test/`](test/), [`collector/test/`](collector/test/) | Behavior tests |
 
 ### Source of record and deferred dependencies
@@ -55,7 +55,7 @@ The policy sample in this repository is v18 and is not a claim about the live po
 
 ### Licensing and release blockers
 
-`package.json` declares ISC, while a deployed copy uses MIT. No repository-root `LICENSE` is tracked. Do not relicense or add a blanket license here. OpenDKG's adopted governance expects each OpenDKG-owned repository to carry an actual `LICENSE` (default Apache-2.0) and requires disclosure plus approval for a non-default license or a recorded repository-specific exception. The ISC/MIT mismatch, the merged external contribution, and bundled third-party media still need that disposition; this is not a GitHub transfer prerequisite and does not block owner-authorized source edits.
+This project's owner-selected license is MIT. The repository-root [`LICENSE`](LICENSE) carries the owner's MIT notice (`Copyright (c) 2025 BRX`), and the root and collector package metadata declare `MIT`. The earlier `ISC` declaration is retained as context for the merged PR #1 contribution rather than silently discarded: see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the PR #1 source, observed git attribution, affected files, and the official ISC terms. The MIT `LICENSE` does not relicense that external contribution, and git attribution is not a verified copyright-ownership statement. Bundled third-party names, logos, and media remain subject to their own terms. OpenDKG's adopted governance requires each organization-owned repository to carry its own `LICENSE` and to disclose a non-default license before accepting contributions; this repository's MIT license is that disclosure, and OpenDKG's `tracabot` repository is also MIT. No Apache-2.0 default is applied retroactively.
 
 The OAuth default redirect-host allowlist remains `grok.com,x.ai`. The built-in client also lists `cursor.com` callbacks, so Cursor OAuth is refused by this default. That mismatch is a known release blocker: an operator can set `DKG_MCP_OAUTH_REDIRECT_HOSTS` for a deployment, but source reconciliation does not broaden the default permission.
 
@@ -74,15 +74,15 @@ This is inspectable application source, not complete server image: production pr
 
 Authorized reader client should receive `initialize`, nonempty `tools/list`, `resources/list`, and `prompts/list`, then successfully call `graph_info`. On **2026-09-27**, existing reader-token check returned 9 tools, 1 resource, 1 prompt, and working `graph_info`. This does **not** establish compatibility with Codex v0.155.1 or a fresh dynamic OAuth client; affected user still needs to retest. Report client version and HTTP status, never bearer token or raw credentials.
 
-## OpenDKG community layer (proposed)
+## OpenDKG community layer (approved move)
 
-DKGSwarm is proposed to move into OpenDKG as the front-facing community marketing, discovery, and coordination layer for OpenDKG apps, while keeping the existing OriginTrail, TRAC, and Umanitek mission and the current `trac-marketing` context. This is a proposal, not a completed transfer or an OpenDKG endorsement.
+DKGSwarm is moving its future development into OpenDKG as the front-facing community marketing, discovery, and coordination layer for OpenDKG apps, while keeping the existing OriginTrail, TRAC, and Umanitek mission and the current `trac-marketing` context. The owner approved the move; it is not a completed transfer or an OpenDKG endorsement.
 
-- **Status:** `brxtrac/dkgswarm` remains the current repository owner. The proposed target `OpenDKG/dkgswarm` does not exist yet. A transfer requires recorded OpenDKG governance approvals and a handover plan, plus license and provenance review.
+- **Status:** The owner approved moving the repository to `OpenDKG/dkgswarm`. The transfer is pending execution and verification, so `brxtrac/dkgswarm` remains the current owner and the target is still unclaimed as of 2026-11-08. The move changes repository custody and the future development home, not the domain, runtime, or operating authority.
 - **What stays unchanged:** the MCP endpoint and audience, `trac-marketing`, owner policy and pin, OAuth and writer boundaries, schedules, operator approvals, domain, and deploy authority.
 - **New app campaigns:** each OpenDKG app, topic, platform, and account is independently opt-in. Draft platform profiles do not activate posting, widen an existing policy, or extend the current TRAC/X work.
 
-The repository README, site, and docs use proposed wording until the status changes. Read the draft [integration and migration checklist](docs/opendkg-umbrella.md) for the open decisions and recorded approval gates.
+The repository README, site, and docs use approved-move, transfer-pending wording until the transfer is verified. Read the [integration and migration checklist](docs/opendkg-umbrella.md) for the open decisions and post-transfer checks.
 
 ## Review and contribute
 
