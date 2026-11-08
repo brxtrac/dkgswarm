@@ -22,10 +22,13 @@ export function enqueueCuratorDraft(name, { filename = INTAKE_PATH } = {}) {
   } finally { db.close(); }
 }
 
-export async function deliverCollectivePush(name, { executeFile = execute } = {}) {
+export async function deliverCollectivePush(name, {
+  executeFile = execute,
+  scriptPath = process.env.TRAC_CURATOR_SCRIPT || "/root/dkg-swarm-webhooks/curator.mjs",
+} = {}) {
   if (!isCollectivePush(name) || !/^[a-zA-Z0-9._-]{1,80}$/.test(name)) throw new Error("invalid collective push name");
   const { stdout } = await executeFile("/usr/bin/flock", ["-w", "5", "/run/lock/trac-marketing-curator.lock",
-    process.execPath, "/root/dkg-swarm-webhooks/curator.mjs", "promote-community", name], {
+    process.execPath, scriptPath, "promote-community", name], {
     timeout: 180000, maxBuffer: 1024 * 1024,
   });
   const acknowledgment = stdout.trim().split("\n").map((line) => JSON.parse(line)).findLast((row) => row.promoted);

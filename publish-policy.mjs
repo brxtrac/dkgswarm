@@ -7,7 +7,12 @@ const policy = JSON.parse(fs.readFileSync(filename, "utf8"));
 if (policy.kind !== "swarm-coordination-policy" || !Number.isSafeInteger(policy.version) || policy.version < 1) throw new Error("Invalid policy");
 const pointer = process.env.DKG_MCP_POLICY_CURRENT || "/root/dkg-public-mcp/policy-current.json";
 const current = JSON.parse(fs.readFileSync(pointer, "utf8"));
-if (policy.version !== current.version + 1) throw new Error(`Expected policy v${current.version + 1}; refusing overwrite or skipped version`);
+const sha256 = policyDigest(policy);
+// Restore is allowed only for the exact pinned bytes; ordinary releases stay strictly N+1.
+const restoring = policy.version === current.version;
+if (restoring ? sha256 !== current.sha256 : policy.version !== current.version + 1) {
+  throw new Error(restoring ? "Refusing restore: supplied policy does not match pinned digest" : `Expected policy v${current.version + 1}; refusing overwrite or skipped version`);
+}
 if (policy.contextGraphId !== "trac-marketing") throw new Error("Policy graph mismatch");
 const token = (process.env.DKG_API_TOKEN || fs.readFileSync("/root/.dkg/auth.token", "utf8").split(/\n/).find((line) => line.trim() && !line.startsWith("#")) || "").trim();
 if (!token) throw new Error("DKG API token missing");
@@ -28,7 +33,6 @@ const readShared = () => request("/api/query", {
   contextGraphId: "trac-marketing", view: "shared-working-memory",
   sparql: `SELECT ?o WHERE { <${subject}> <http://www.w3.org/2000/01/rdf-schema#comment> ?o } LIMIT 2`,
 });
-const sha256 = policyDigest(policy);
 let confirmed = await readShared();
 if (!confirmed?.result?.bindings?.length) {
   try {
@@ -43,17 +47,24 @@ if (!confirmed?.result?.bindings?.length) {
     // A timed-out create may have succeeded. Only reuse exact matching WM content.
     const wm = await request("/api/query", { contextGraphId: "trac-marketing", view: "working-memory",
       sparql: `SELECT ?o WHERE { <${subject}> <http://www.w3.org/2000/01/rdf-schema#comment> ?o } LIMIT 2` });
-    verifyPolicyBindings(wm?.result?.bindings, { version: policy.version, sha256, contextGraphId: "trac-marketing" });
+    try { verifyPolicyBindings(wm?.result?.bindings, { version: policy.version, sha256, contextGraphId: "trac-marketing" }); }
+    catch (verifyError) { throw new Error(`Create failed: ${error.message}; ${verifyError.message}`); }
   }
   try { await request(`/api/knowledge-assets/${name}/swm/share`, { contextGraphId: "trac-marketing" }); }
   catch (error) {
     const shared = await readShared();
-    verifyPolicyBindings(shared?.result?.bindings, { version: policy.version, sha256, contextGraphId: "trac-marketing" });
+    try { verifyPolicyBindings(shared?.result?.bindings, { version: policy.version, sha256, contextGraphId: "trac-marketing" }); }
+    catch (verifyError) { throw new Error(`Share failed: ${error.message}; ${verifyError.message}`); }
   }
   confirmed = await readShared();
 }
 verifyPolicyBindings(confirmed?.result?.bindings, { version: policy.version, sha256, contextGraphId: "trac-marketing" });
 const temp = `${pointer}.${process.pid}.tmp`;
-fs.writeFileSync(temp, JSON.stringify({ version: policy.version, sha256 }) + "\n", { mode: 0o600 });
-fs.renameSync(temp, pointer);
+try {
+  fs.writeFileSync(temp, JSON.stringify({ version: policy.version, sha256 }) + "\n", { mode: 0o600 });
+  fs.renameSync(temp, pointer);
+} catch (error) {
+  try { fs.unlinkSync(temp); } catch {}
+  throw error;
+}
 console.log(`Shared ${name} in DKG Shared Working Memory`);

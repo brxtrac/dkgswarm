@@ -42,14 +42,20 @@ function reviewed(kind) {
   finally { store.close(); }
 }
 
-export function intake(name, filename = intakePath) {
+export const MAX_AUTHENTICATED_PUSH_TTL_MS = 2 * 60 * 60 * 1000;
+
+export function intake(name, filename = intakePath, terminal = new Set()) {
   if (!fs.existsSync(filename)) return name ? undefined : [];
-  const store = new DatabaseSync(filename);
+  const store = new DatabaseSync(filename, { readOnly: true });
   try {
     store.exec("PRAGMA busy_timeout = 5000");
-    return name
-      ? store.prepare("SELECT name, queued_at FROM drafts WHERE reviewed_at IS NULL AND name = ?").get(name)
-      : store.prepare("SELECT name, queued_at FROM drafts WHERE reviewed_at IS NULL AND lower(name) NOT LIKE '%collective-push%' AND lower(name) NOT GLOB '*collective_push*' AND lower(name) NOT LIKE '%collectivepush%' ORDER BY queued_at LIMIT 40").all();
+    if (name) return terminal.has(name) ? undefined
+      : store.prepare("SELECT name, queued_at FROM drafts WHERE reviewed_at IS NULL AND name = ?").get(name);
+    const selected = [];
+    for (const row of store.prepare("SELECT name, queued_at FROM drafts WHERE reviewed_at IS NULL ORDER BY queued_at, name").iterate()) {
+      if (!terminal.has(row.name)) selected.push(row);
+    }
+    return selected.sort((a, b) => Number(isCollectivePush(b.name)) - Number(isCollectivePush(a.name))).slice(0, 40);
   } finally { store.close(); }
 }
 
@@ -77,6 +83,7 @@ export function validateCollectivePush({ name, url, postId, issuedAt, expiresAt,
   if (!/^\d{8,22}$/.test(postId || "") || canonicalUrl(url) !== `https://x.com/i/status/${postId}`) throw new Error("invalid push target URL or post ID");
   if (!Number.isFinite(Date.parse(issuedAt)) || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Math.max(at, Date.parse(issuedAt))) throw new Error("collective push expired or has invalid dates");
   if (Date.parse(issuedAt) > at + 5 * 60_000) throw new Error("collective push issue time is in future");
+  if (Date.parse(expiresAt) - Date.parse(issuedAt) > MAX_AUTHENTICATED_PUSH_TTL_MS) throw new Error("collective push lifetime exceeds two hours");
   if (!String(publisher || "").trim() || !String(angle || "").trim() || String(text || "").trim().length < 40) throw new Error("collective push lacks publisher, angle or context");
   return `https://x.com/i/status/${postId}`;
 }
@@ -177,13 +184,20 @@ async function main() {
       sourceTier: JSON.parse(row.classification_json || "{}").sourceTier,
     }));
     const communitySeen = reviewed("community");
-    console.log(JSON.stringify({ graph, count: rows.length, candidates: rows, communityDrafts: intake().filter((row) => !communitySeen.has(row.name)).slice(0, 40) }));
+    console.log(JSON.stringify({ graph, count: rows.length, candidates: rows, communityDrafts: intake(undefined, intakePath, communitySeen) }));
     return;
   }
   if (action === "reject") {
     const [kind, name, ...reason] = process.argv.slice(3);
     if (!["x", "community"].includes(kind) || !/^[a-zA-Z0-9._-]{1,80}$/.test(name || "") || !reason.join(" ").trim()) throw new Error("Usage: reject x|community <id> <reason>");
+    const queued = kind === "community" ? intake(name) : null;
     decision(kind, name, "rejected", reason.join(" "));
+    if (queued) {
+      const store = new DatabaseSync(intakePath);
+      try { store.prepare("UPDATE drafts SET reviewed_at = ? WHERE name = ? AND queued_at = ? AND reviewed_at IS NULL")
+        .run(new Date().toISOString(), name, queued.queued_at); }
+      finally { store.close(); }
+    }
     console.log(JSON.stringify({ rejected: name, reason: reason.join(" ") }));
     return;
   }

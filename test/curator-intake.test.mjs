@@ -35,16 +35,21 @@ test("routing bypasses review only for collective pushes and keeps errors queued
     { curatorReview: "bypassed", delivery: "retry-queued" });
 });
 
-test("deterministic delivery uses existing lock without shell or agent", async () => {
+test("deterministic delivery uses existing lock without shell or agent", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "curator-script-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const scriptPath = path.join(dir, "curator.mjs");
+  fs.writeFileSync(scriptPath, "process.exit(0);\n");
   let invocation;
-  const result = await deliverCollectivePush("collective-push-demo", { executeFile: async (...args) => {
+  const result = await deliverCollectivePush("collective-push-demo", { scriptPath, executeFile: async (...args) => {
     invocation = args;
     return { stdout: '{"name":"collective-push-demo"}\n{"promoted":"curator-push-demo","recovered":true}\n' };
   } });
   assert.equal(result.recovered, true);
   assert.equal(invocation[0], "/usr/bin/flock");
   assert.deepEqual(invocation[1], ["-w", "5", "/run/lock/trac-marketing-curator.lock", process.execPath,
-    "/root/dkg-swarm-webhooks/curator.mjs", "promote-community", "collective-push-demo"]);
+    scriptPath, "promote-community", "collective-push-demo"]);
+  assert.equal(invocation[1][4], scriptPath);
   await assert.rejects(deliverCollectivePush("collective-push-;bad"), /invalid/);
   await assert.rejects(deliverCollectivePush("collective-push-demo", { executeFile: async () => ({ stdout: '{}' }) }), /acknowledgment/);
 });

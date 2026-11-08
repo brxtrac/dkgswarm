@@ -153,7 +153,7 @@ app.use((req, res, next) => {
 const HEALTH_STATUS = process.env.SWARM_HEALTH_STATUS || "/root/dkg-swarm-webhooks/data/health-status.json";
 
 app.get("/api/swarm/health", (_req, res) => {
-  const health = publicHealth(HEALTH_STATUS);
+  const health = publicHealth(HEALTH_STATUS, watcher.status());
   res.set("Cache-Control", "public, max-age=60");
   res.status(health.ok ? 200 : 503).json(health);
 });
@@ -161,9 +161,9 @@ app.get("/api/swarm/health", (_req, res) => {
 const networkStats = createNetworkStats({ log: console });
 
 app.get("/api/swarm/network", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
   try {
     const snapshot = await networkStats.get();
-    res.set("Cache-Control", snapshot.stale ? "no-store" : "public, max-age=300");
     res.json(snapshot);
   } catch {
     res.status(503).json({ error: "Network stats temporarily unavailable" });
@@ -193,6 +193,10 @@ app.get("/api/swarm/stats", async (_req, res) => {
       collectedSources: sources,
       sharedPosts,
       connectedAgents: activity.connectedAgents,
+      connectedInstallations: activity.connectedAgents,
+      monitoredAccounts: watcher.status().monitoredAccounts.length,
+      legacyRegisteredAccounts: new Set((loadDb().endpoints || []).filter((row) => !row.disabled)
+        .map((row) => { try { return normalizeXHandle(row.handle).toLowerCase(); } catch { return ""; } }).filter(Boolean)).size,
       sharedDrafts: activity.sharedDrafts,
     });
   } catch {

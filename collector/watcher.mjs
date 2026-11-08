@@ -797,7 +797,7 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
       throw new Error(`DKG ${response.status}: ${body.error || body.message || "asset write failed"}`);
     }
     if (!isWorkingAsset(body) && !isSharedAsset(body)) throw new Error(`DKG asset ${asset.name} write not confirmed`);
-    if (!await assetExistsInWorkingMemory(asset.name) && !await assetIsShared(asset.name)) {
+    if (asset.name.startsWith("collective-push-x-") && !await assetExistsInWorkingMemory(asset.name) && !await assetIsShared(asset.name)) {
       throw new Error(`DKG asset ${asset.name} has no queryable WM content`);
     }
     return body;
@@ -848,7 +848,8 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
         `<${subject}> ${predicate === RDF_TYPE ? "rdf:type" : `<${predicate}>`}`))];
       if (!pairs.length || expected.length > 100 || pairs.some((pair) => !/^<https?:\/\/[^<>\s]+> (?:rdf:type|<https?:\/\/[^<>\s]+>)$/.test(pair))) return false;
       const token = loadToken();
-      if (!token) return false;
+       if (!token) return null;
+       let unavailable = false;
       for (const view of ["working-memory", "shared-working-memory"]) {
         try {
           const response = await fetch(`${dkgApi}/api/query`, {
@@ -858,38 +859,38 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
               sparql: `PREFIX rdf: <${RDF_TYPE.slice(0, RDF_TYPE.lastIndexOf("#") + 1)}> SELECT DISTINCT ?s ?p ?o WHERE { VALUES (?s ?p) { ${pairs.map((pair) => `(${pair})`).join(" ")} } ?s ?p ?o } LIMIT 101` }),
            signal: AbortSignal.timeout(12000),
          });
-         if (response.ok && matchesDerivedQuads(await response.json(), expected)) return true;
-       } catch {}
-     }
-     return false;
+          if (!response.ok) { unavailable = true; continue; }
+          const body = await response.json();
+          if (body?.result?.type !== "bindings" || !Array.isArray(body.result.bindings)) { unavailable = true; continue; }
+          if (matchesDerivedQuads(body, expected)) return true;
+        } catch { unavailable = true; }
+      }
+      return unavailable ? null : false;
    }
 
   async function reconcileDkgDeliveries() {
     if (state.reconcileRunning) return;
     state.reconcileRunning = true;
     try {
-      const verifiedAt = db.prepare("SELECT value FROM runtime_metadata WHERE key = 'dkg-reconcile-verified-at'").get()?.value || "";
-      const completed = db.prepare(`SELECT d.post_id, d.stage, d.completed_at, o.raw_asset, o.insight_asset
-        FROM deliveries d JOIN observations o ON o.post_id = d.post_id
-        WHERE d.status = 'completed' AND d.stage IN ('raw-dkg', 'derived-dkg')
-          AND (? = '' OR d.completed_at > ?)
-        ORDER BY d.completed_at LIMIT 40`).all(verifiedAt, verifiedAt);
-      let cursor = verifiedAt;
+      const saved = db.prepare("SELECT value FROM runtime_metadata WHERE key = 'dkg-reconcile-cursor-v2'").get()?.value;
+      let cursor = saved ? JSON.parse(saved) : ["", "", ""];
+      const completed = db.prepare(`SELECT post_id, stage, completed_at FROM deliveries
+        WHERE status = 'completed' AND stage IN ('raw-dkg', 'derived-dkg')
+          AND (COALESCE(completed_at, ''), post_id, stage) > (?, ?, ?)
+        ORDER BY COALESCE(completed_at, ''), post_id, stage LIMIT 40`).all(...cursor);
       for (const row of completed) {
-        const name = row.stage === "raw-dkg" ? row.raw_asset : row.insight_asset;
-        if (name && !await assetExistsInWorkingMemory(name) && !await assetIsShared(name)) {
+        const matches = await assetContentMatches(row.post_id, row.stage);
+        if (matches === null) break;
+        if (!matches) {
           db.prepare(`UPDATE deliveries SET status = 'pending', next_attempt_at = ?, completed_at = NULL,
-            last_error = 'asset missing during WM reconciliation' WHERE post_id = ? AND stage = ?`)
+            last_error = 'content mismatch during exact reconciliation' WHERE post_id = ? AND stage = ? AND status = 'completed'`)
             .run(now(), row.post_id, row.stage);
-          log.error?.("watcher reconciliation", row.post_id, row.stage, "missing; queued retry");
-          break;
         }
-        if (row.completed_at > cursor) cursor = row.completed_at;
+        cursor = [row.completed_at || "", row.post_id, row.stage];
+        db.prepare(`INSERT INTO runtime_metadata (key, value, refreshed_at) VALUES ('dkg-reconcile-cursor-v2', ?, ?)
+          ON CONFLICT(key) DO UPDATE SET value = excluded.value, refreshed_at = excluded.refreshed_at`).run(JSON.stringify(cursor), now());
       }
-      if (cursor > verifiedAt) {
-        db.prepare(`INSERT INTO runtime_metadata (key, value, refreshed_at) VALUES ('dkg-reconcile-verified-at', ?, ?)
-          ON CONFLICT(key) DO UPDATE SET value = excluded.value, refreshed_at = excluded.refreshed_at`).run(cursor, now());
-      }
+      if (!completed.length) db.prepare("DELETE FROM runtime_metadata WHERE key = 'dkg-reconcile-cursor-v2'").run();
       const candidates = db.prepare(`SELECT d.post_id, d.stage FROM deliveries d
         WHERE d.stage IN ('raw-dkg', 'derived-dkg') AND d.status = 'quarantined'
           AND (d.last_error LIKE '%WM/SWM content not exactly verified%'
@@ -980,6 +981,12 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
       .run(attempts, new Date(Date.now() + delay).toISOString(), reason.slice(0, 1000), id, stage);
   }
 
+  function deferVerification(job) {
+    db.prepare(`UPDATE deliveries SET next_attempt_at = ?, last_error = 'verification unavailable; mutation deferred'
+      WHERE post_id = ? AND stage = ? AND status = 'pending'`)
+      .run(new Date(Date.now() + retryMs).toISOString(), job.post_id, job.stage);
+  }
+
   function completeDelivery(id, stage) {
     db.prepare("UPDATE deliveries SET status = 'completed', completed_at = ?, last_error = NULL WHERE post_id = ? AND stage = ?").run(now(), id, stage);
   }
@@ -1001,12 +1008,16 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
          try {
           let outcome;
            if (job.stage === "raw-dkg" || job.stage === "derived-dkg") {
-             if (await assetContentMatches(job.post_id, job.stage)) {
+             const matches = await assetContentMatches(job.post_id, job.stage);
+             if (matches === null) { deferVerification(job); continue; }
+             if (matches) {
                completeDelivery(job.post_id, job.stage);
                continue;
              }
              outcome = await writeAsset(job.stage === "raw-dkg" ? assets.raw : assets.derived);
-             if (!await assetContentMatches(job.post_id, job.stage)) throw new Error(`${job.stage} WM/SWM content not exactly verified`);
+             const confirmed = await assetContentMatches(job.post_id, job.stage);
+             if (confirmed === null) { deferVerification(job); continue; }
+             if (!confirmed) throw new Error(`${job.stage} WM/SWM content not exactly verified`);
            }
            if (job.stage === "trusted-push-dkg") outcome = await publishTrustedPush(data.post);
            if (job.stage === "collective-push-dkg" || job.stage === "webhook") {
@@ -1086,6 +1097,11 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
       }
       state.lastPoll = now();
       state.lastError = errors.join("; ") || null;
+      const metadata = db.prepare(`INSERT INTO runtime_metadata (key, value, refreshed_at) VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, refreshed_at = excluded.refreshed_at`);
+      if (!errors.length) metadata.run("collector-last-successful-poll", state.lastPoll, state.lastPoll);
+      if (state.lastSearch) metadata.run("collector-last-search", state.lastSearch, state.lastPoll);
+      metadata.run("collector-search-enabled", String(searchReady && searchQueries.length > 0), state.lastPoll);
     } catch (error) {
       state.lastError = String(error.message || error);
       log.error?.("watcher poll", state.lastError);
@@ -1095,13 +1111,18 @@ export function createWatcher({ fanout, log = console, getAdditionalAccounts = (
     }
   }
 
+  const timers = [];
   return {
+    processQueue,
+    reconcileDkgDeliveries,
+    stop() { for (const timer of timers.splice(0)) clearInterval(timer); },
+    close() { for (const timer of timers.splice(0)) clearInterval(timer); db.close(); },
     start() {
       poll();
       reconcileDkgDeliveries().then(processQueue);
-      setInterval(poll, pollMs).unref();
-      setInterval(processQueue, retryMs).unref();
-      setInterval(() => reconcileDkgDeliveries().then(processQueue), reconcileMs).unref();
+      timers.push(setInterval(poll, pollMs).unref());
+      timers.push(setInterval(processQueue, retryMs).unref());
+      timers.push(setInterval(() => reconcileDkgDeliveries().then(processQueue), reconcileMs).unref());
       log.info?.(`X watcher every ${pollMs}ms official=${accounts.join(",")} support=${supportAccounts().join(",")}`);
     },
     status() {

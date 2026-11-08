@@ -1,9 +1,17 @@
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildAssets, buildTrustedPush, classifyPost, createWatcher, dkgHealth, extractOperationId, extractScriptUrls, hasQueryContent, matchesDerivedQuads, isSharedAsset, isWorkingAsset, normalizeXHandle, openStore, shouldNotifyPost, shouldSkipPost, trustedPushEligible } from "../watcher.mjs";
+import { buildAssets, buildTrustedPush, classifyPost, createWatcher as makeWatcher, dkgHealth, extractOperationId, extractScriptUrls, hasQueryContent, matchesDerivedQuads, isSharedAsset, isWorkingAsset, normalizeXHandle, openStore, shouldNotifyPost, shouldSkipPost, trustedPushEligible } from "../watcher.mjs";
+
+const activeWatchers = [];
+const createWatcher = (options) => {
+  const watcher = makeWatcher(options);
+  activeWatchers.push(watcher);
+  return watcher;
+};
+afterEach(() => { for (const watcher of activeWatchers.splice(0)) watcher.stop(); });
 
 test("X handles are required, validated, and normalized", () => {
   assert.equal(normalizeXHandle(" @Origin_Trail "), "Origin_Trail");
@@ -532,7 +540,7 @@ test("409 unfinished promote quarantines delivery without automatic SWM share", 
         error: `Assertion "${name}" has an unfinished promote; retry assertionPromote before mutating its draft` }) };
     }
     if (url.includes("/api/knowledge-assets/")) return { ok: false, status: 404, json: async () => ({}) };
-    return { ok: true, status: 200, json: async () => ({ result: { type: "boolean", value: false } }) };
+    return { ok: true, status: 200, json: async () => ({ result: { type: "bindings", bindings: [] } }) };
   };
   try {
     const watcher = createWatcher({ log: { info() {}, error() {} } });
@@ -554,7 +562,7 @@ test("409 unfinished promote quarantines delivery without automatic SWM share", 
   }
 });
 
-test("inactive WM draft retries, then quarantines if backend cannot verify exact content", async () => {
+test("unavailable verification defers mutations without consuming attempts", async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "x-watcher-inactive-"));
   const keys = ["WATCH_DB", "WATCH_SEEN", "WATCH_DETECTIONS", "DKG_API_TOKEN_FILE"];
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
@@ -579,12 +587,15 @@ test("inactive WM draft retries, then quarantines if backend cannot verify exact
     assert.equal(watcher.status().dkgFailures.length, 0);
     const db = openStore(process.env.WATCH_DB, process.env.WATCH_SEEN, process.env.WATCH_DETECTIONS);
     assert.deepEqual(db.prepare("SELECT stage, status, attempts FROM deliveries ORDER BY stage").all().map((row) => ({ ...row })),
-      [{ stage: "derived-dkg", status: "pending", attempts: 1 }, { stage: "raw-dkg", status: "pending", attempts: 1 }]);
+      [{ stage: "derived-dkg", status: "pending", attempts: 0 }, { stage: "raw-dkg", status: "pending", attempts: 0 }]);
     db.prepare("UPDATE deliveries SET attempts = 11, next_attempt_at = ? WHERE post_id = '123'").run(new Date(0).toISOString());
     db.close();
     await watcher.test({ post_id: "123", summary: "OriginTrail update" });
-    assert.deepEqual(watcher.status().dkgFailures.map((row) => row.attempts), [12, 12]);
-    assert.equal(writes, 4);
+    assert.equal(watcher.status().dkgFailures.length, 0);
+    const checked = new (await import("node:sqlite")).DatabaseSync(process.env.WATCH_DB, { readOnly: true });
+    assert.deepEqual(checked.prepare("SELECT attempts FROM deliveries ORDER BY stage").all().map((row) => row.attempts), [11, 11]);
+    checked.close();
+    assert.equal(writes, 0);
   } finally {
     globalThis.fetch = originalFetch;
     for (const [key, value] of Object.entries(previous)) {
@@ -607,6 +618,7 @@ test("retry exhaustion quarantines after twelfth failed DKG attempt", async () =
   fs.writeFileSync(process.env.DKG_API_TOKEN_FILE, "test-token");
   let writes = 0;
   globalThis.fetch = async (input) => {
+    if (String(input).endsWith("/api/query")) return { ok: true, json: async () => ({ result: { type: "bindings", bindings: [] } }) };
     if (String(input).endsWith("/api/knowledge-assets")) writes++;
     return { ok: false, status: 503, json: async () => ({ error: "temporary failure" }) };
   };
@@ -816,6 +828,104 @@ test("derived quad matching accepts string Graph API bindings without confusing 
   assert.equal(datedMatch({ type: "literal", value: "2026-10-01T15:23:11.38Z", datatype: dateTime }), true);
   assert.equal(datedMatch(`"2026-10-01T15:23:11.381Z"^^<${dateTime}>`), false);
   assert.equal(datedMatch('"2026-10-01T15:23:11.38Z"'), false);
+});
+
+test("partial and post-write verification outages defer without attempts or repeated writes", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "x-watcher-verification-"));
+  const keys = ["WATCH_DB", "WATCH_SEEN", "WATCH_DETECTIONS", "DKG_API_TOKEN_FILE"];
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  const originalFetch = globalThis.fetch;
+  process.env.WATCH_DB = path.join(directory, "watcher.sqlite");
+  process.env.WATCH_SEEN = path.join(directory, "missing.json");
+  process.env.WATCH_DETECTIONS = path.join(directory, "missing.jsonl");
+  process.env.DKG_API_TOKEN_FILE = path.join(directory, "token");
+  fs.writeFileSync(process.env.DKG_API_TOKEN_FILE, "fixture");
+  let mode = "partial";
+  let writes = 0;
+  globalThis.fetch = async (input, options) => {
+    if (String(input).endsWith("/api/knowledge-assets")) {
+      writes++;
+      mode = "outage";
+      return { ok: true, json: async () => ({ memoryLayer: "WM" }) };
+    }
+    assert.ok(String(input).endsWith("/api/query"));
+    const { view } = JSON.parse(options.body);
+    if (mode === "outage" || mode === "partial" && view === "shared-working-memory") return { ok: false, status: 503 };
+    return { ok: true, json: async () => ({ result: { type: "bindings", bindings: [] } }) };
+  };
+  const watcher = createWatcher({ log: { info() {}, error() {} } });
+  const db = new (await import("node:sqlite")).DatabaseSync(process.env.WATCH_DB);
+  try {
+    await watcher.test({ post_id: "123456789", summary: "OriginTrail update" });
+    assert.equal(writes, 0);
+    assert.deepEqual(db.prepare("SELECT attempts FROM deliveries").all().map((r) => r.attempts), [0, 0]);
+    mode = "empty";
+    db.prepare("UPDATE deliveries SET next_attempt_at = ?").run(new Date(0).toISOString());
+    await watcher.processQueue();
+    assert.equal(writes, 1);
+    assert.deepEqual(db.prepare("SELECT attempts FROM deliveries").all().map((r) => r.attempts), [0, 0]);
+    assert.equal(watcher.status().dkgFailures.length, 0);
+  } finally {
+    watcher.close(); db.close(); globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("exact reconciliation uses stable ties, wraps, and defers unavailable reads", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "x-watcher-reconcile-"));
+  const keys = ["WATCH_DB", "WATCH_SEEN", "WATCH_DETECTIONS", "DKG_API_TOKEN_FILE"];
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  const originalFetch = globalThis.fetch;
+  process.env.WATCH_DB = path.join(directory, "watcher.sqlite");
+  process.env.WATCH_SEEN = path.join(directory, "missing.json");
+  process.env.WATCH_DETECTIONS = path.join(directory, "missing.jsonl");
+  process.env.DKG_API_TOKEN_FILE = path.join(directory, "token");
+  fs.writeFileSync(process.env.DKG_API_TOKEN_FILE, "fixture");
+  const db = openStore(process.env.WATCH_DB, process.env.WATCH_SEEN, process.env.WATCH_DETECTIONS);
+  const expected = new Map();
+  const seen = new Set();
+  const completed = "2026-10-01T00:00:00.000Z";
+  for (let i = 100; i < 141; i++) {
+    const post = { post_id: String(i), account: "@origin_trail", post_url: `https://x.com/origin_trail/status/${i}`, summary: "OriginTrail source", created_at: completed };
+    const classification = classifyPost(post, ["origin_trail"]);
+    db.prepare(`INSERT INTO observations(post_id,account,kind,post_url,summary,created_at,observed_at,classification_json)
+      VALUES (?,?,'official',?,?,?,?,?)`).run(post.post_id, post.account, post.post_url, post.summary, completed, completed, JSON.stringify(classification));
+    db.prepare("INSERT INTO deliveries(post_id,stage,status,next_attempt_at,completed_at) VALUES (?,'raw-dkg','completed',?,?)").run(post.post_id, completed, completed);
+    expected.set(post.post_id, buildAssets(post, classification, completed).raw.quads.map(({ subject: s, predicate: p, object: o }) => ({ s, p, o })));
+  }
+  let mode = "match";
+  let writes = 0;
+  globalThis.fetch = async (input, options) => {
+    if (!String(input).endsWith("/api/query")) { writes++; throw new Error("unexpected mutation"); }
+    if (mode === "unavailable") return { ok: false, status: 503 };
+    const request = JSON.parse(options.body);
+    const id = request.sparql.match(/status\/(\d+)/)[1];
+    seen.add(id);
+    const bindings = mode === "missing" && id === "100" ? [] : expected.get(id);
+    return { ok: true, json: async () => ({ result: { type: "bindings", bindings } }) };
+  };
+  const watcher = createWatcher({ log: { info() {}, error() {} } });
+  try {
+    await watcher.reconcileDkgDeliveries();
+    assert.equal(seen.size, 40);
+    await watcher.reconcileDkgDeliveries();
+    assert.equal(seen.size, 41);
+    await watcher.reconcileDkgDeliveries();
+    assert.equal(db.prepare("SELECT value FROM runtime_metadata WHERE key='dkg-reconcile-cursor-v2'").get(), undefined);
+    mode = "unavailable";
+    await watcher.reconcileDkgDeliveries();
+    assert.equal(db.prepare("SELECT value FROM runtime_metadata WHERE key='dkg-reconcile-cursor-v2'").get(), undefined);
+    assert.equal(db.prepare("SELECT COUNT(*) n FROM deliveries WHERE status='completed'").get().n, 41);
+    mode = "missing";
+    await watcher.reconcileDkgDeliveries();
+    assert.equal(db.prepare("SELECT status FROM deliveries WHERE post_id='100'").get().status, "pending");
+    assert.equal(writes, 0);
+  } finally {
+    watcher.close(); db.close(); globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("legacy seen state migrates without replaying completed webhooks", () => {
