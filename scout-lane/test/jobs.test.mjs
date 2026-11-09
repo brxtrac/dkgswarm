@@ -323,3 +323,17 @@ test("real process kill after durable submit becomes uncertain, before submit is
   assert.equal(killedBefore.signal, "SIGKILL");
   assert.equal(claimCore({ dbPath: before.dbPath, config: beforeConfig, workerId: "worker-2", accounts: ["acct-1"], now: NOW + 11 * 60_000 }).claimed, true);
 });
+
+test("core rejects receipt metadata outside published", () => {
+  const s = setup();
+  enqueueBatchCore({ dbPath: s.dbPath, config: loaded(s), scoutId: "scout-1", opportunities: [opportunity()] });
+  const claimed = claimCore({ dbPath: s.dbPath, config: loaded(s), workerId: "worker-1", accounts: ["acct-1"], now: NOW });
+  assert.throws(() => reportCore({
+    dbPath: s.dbPath, config: loaded(s), jobId: claimed.job.id, workerId: "worker-1",
+    fencingToken: claimed.fencingToken, revision: claimed.revision, status: "drafted",
+    content: "A draft that must not carry publication metadata.", receipt: { url: "https://x.com/i/status/1234567890" },
+  }), /receipt fields/);
+  const job = getJob({ dbPath: s.dbPath, config: loaded(s), jobId: claimed.job.id });
+  assert.equal(job.resultStatus, null);
+  assert.equal(job.receipt, null);
+});

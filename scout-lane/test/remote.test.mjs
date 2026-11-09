@@ -263,3 +263,70 @@ test("operator listing is limited to granted accounts", async () => {
   assert.deepEqual(listed.jobs, []);
   assert.deepEqual(listed.accountScopes, ["acct-2"]);
 });
+
+test("receipt metadata is refused for every nonpublication report", async () => {
+  const s = live();
+  grants(s.statusesPath, [
+    { id: "scout-main", tokenFamily: "fam-scout", roles: ["scout"], accounts: ["acct-1"] },
+    { id: "worker-main", tokenFamily: "fam-worker", roles: ["worker"], accounts: ["acct-1"] },
+  ]);
+  const scout = harness(s, { family: "fam-scout" }).tools;
+  const worker = harness(s, { family: "fam-worker" }).tools;
+  await scout.scout_job_enqueue.handler({ opportunities: [opportunity()] });
+  const claimed = JSON.parse((await worker.scout_job_claim.handler({})).content[0].text);
+  for (const status of ["drafted", "failed", "skipped", "uncertain"]) {
+    await assert.rejects(() => worker.scout_job_report.handler({
+      jobId: claimed.job.id, fencingToken: claimed.fencingToken, revision: claimed.revision,
+      status, content: status === "drafted" ? "A short nonpublication draft with no receipt." : undefined,
+      reason: status === "drafted" ? undefined : "nonpublication report",
+      receiptUrl: "https://x.com/i/status/1234567890",
+    }), /receipt fields/);
+  }
+  const still = JSON.parse((await worker.scout_jobs_list.handler({})).content[0].text);
+  assert.equal(still.jobs[0].state, "claimed");
+  assert.equal(still.jobs[0].resultStatus, null);
+  assert.equal(still.jobs[0].receipt, null);
+});
+
+test("worker report return is redacted for a removed account, and nonterminal reports are refused", async () => {
+  const s = live();
+  grants(s.statusesPath, [
+    { id: "scout-main", tokenFamily: "fam-scout", roles: ["scout"], accounts: ["acct-1"] },
+    { id: "worker-main", tokenFamily: "fam-worker", roles: ["worker"], accounts: ["acct-1"] },
+  ]);
+  const scout = harness(s, { family: "fam-scout" }).tools;
+  const worker = harness(s, { family: "fam-worker" }).tools;
+  await scout.scout_job_enqueue.handler({ opportunities: [opportunity()] });
+  const claimed = JSON.parse((await worker.scout_job_claim.handler({})).content[0].text);
+  writeFileSync(s.configPath, JSON.stringify({ ...s.config, accounts: [] }));
+  await assert.rejects(() => worker.scout_job_report.handler({
+    jobId: claimed.job.id, fencingToken: claimed.fencingToken, revision: claimed.revision,
+    status: "drafted", content: "A draft that must not be accepted after account removal.",
+  }), /no longer operator-approved/);
+  const failed = JSON.parse((await worker.scout_job_report.handler({
+    jobId: claimed.job.id, fencingToken: claimed.fencingToken, revision: claimed.revision,
+    status: "failed", reason: "account was removed before submission",
+  })).content[0].text);
+  assert.equal(failed.ok, true);
+  assert.equal(failed.accountRemoved, true);
+  assert.equal(failed.job, undefined);
+});
+
+test("operator historical list keeps removed-account audit rows while worker hides them", async () => {
+  const s = live();
+  grants(s.statusesPath, [
+    { id: "scout-main", tokenFamily: "fam-scout", roles: ["scout"], accounts: ["acct-1"] },
+    { id: "worker-main", tokenFamily: "fam-worker", roles: ["worker"], accounts: ["acct-1"] },
+    { id: "operator-main", tokenFamily: "fam-op", roles: ["operator"], accounts: ["acct-1"] },
+  ]);
+  const scout = harness(s, { family: "fam-scout" }).tools;
+  const worker = harness(s, { family: "fam-worker" }).tools;
+  const operator = harness(s, { family: "fam-op" }).tools;
+  await scout.scout_job_enqueue.handler({ opportunities: [opportunity()] });
+  writeFileSync(s.configPath, JSON.stringify({ ...s.config, accounts: [] }));
+  const hidden = JSON.parse((await worker.scout_jobs_list.handler({})).content[0].text);
+  assert.deepEqual(hidden.jobs, []);
+  const history = JSON.parse((await operator.scout_jobs_list.handler({})).content[0].text);
+  assert.equal(history.jobs.length, 1);
+  assert.equal(history.jobs[0].state, "queued");
+});

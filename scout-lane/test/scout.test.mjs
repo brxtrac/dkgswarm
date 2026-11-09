@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createHttpModelAdapter, createPublicReadAdapter, parseScoutOutput, runScout, stripHtml, validateModelEndpoint, wireModel } from "../scout.mjs";
 import { listJobs, loadConfig } from "../jobs.mjs";
 import { verifyLocalGrant } from "../capabilities.mjs";
@@ -116,13 +117,23 @@ test("scout refuses fabricated citations and unfetched reply targets", async () 
 test("local scout grant authenticates the token and scopes accounts", () => {
   const s = live();
   process.env.LOCAL_SCOUT_TOKEN = "local-token-value";
+  const tokenHash = createHash("sha256").update("local-token-value").digest("hex");
   writeFileSync(s.statusesPath, JSON.stringify({ version: 1, grants: [
-    { id: "local-scout", tokenFamily: "local", roles: ["scout"], accounts: ["acct-1"], tokenEnv: "LOCAL_SCOUT_TOKEN" },
-    { id: "accountless", tokenFamily: "local2", roles: ["scout"], accounts: [], tokenEnv: "LOCAL_SCOUT_TOKEN" },
+    { id: "local-scout", tokenFamily: "local", roles: ["scout"], accounts: ["acct-1"], tokenEnv: "LOCAL_SCOUT_TOKEN", tokenHash },
+    { id: "accountless", tokenFamily: "local2", roles: ["scout"], accounts: [], tokenEnv: "LOCAL_SCOUT_TOKEN", tokenHash },
   ] }));
   assert.deepEqual(verifyLocalGrant(s.statusesPath, "local-scout", "local-token-value").accounts, ["acct-1"]);
-  assert.throws(() => verifyLocalGrant(s.statusesPath, "local-scout", "wrong-token-value"), /invalid local scout/);
+  assert.throws(() => verifyLocalGrant(s.statusesPath, "local-scout", "wrong-token-value"), (error) => /invalid local scout/.test(error.message) && !error.message.includes("wrong-token-value"));
   assert.throws(() => verifyLocalGrant(s.statusesPath, "accountless", "local-token-value"), /no approved account/);
+  delete process.env.LOCAL_SCOUT_TOKEN;
+  assert.throws(() => verifyLocalGrant(s.statusesPath, "local-scout"), /invalid local scout/);
+  process.env.LOCAL_SCOUT_TOKEN = "local-token-value";
+  writeFileSync(s.statusesPath, JSON.stringify({ version: 1, grants: [
+    { id: "local-scout", tokenFamily: "local", roles: ["scout"], accounts: ["acct-1"], tokenEnv: "LOCAL_SCOUT_TOKEN", tokenHash, revokedAt: new Date(NOW - 1000).toISOString() },
+  ] }));
+  assert.throws(() => verifyLocalGrant(s.statusesPath, "local-scout"), /unknown local scout grant/);
+  const runSource = readFileSync(new URL("../scout-run.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(runSource, /--token|arg\("token"/);
 });
 
 test("model wire id and endpoint validation do not substitute or downgrade transport", () => {
@@ -146,4 +157,54 @@ test("model adapter rejects oversized responses and non-JSON payloads", async ()
     fetchImpl: async () => ({ ok: true, text: async () => "not-json" }),
   });
   await assert.rejects(() => badJson({ model: "9router/cx/gpt-6.1-sol", system: "s", user: "u" }), /not JSON/);
+});
+
+test("scout revalidates authority after fetch and after inference, never queuing stale authority", async () => {
+  const s = live();
+  const config = loadConfig(s.configPath);
+  const authority = () => ({ config: loadConfig(s.configPath), accounts: ["acct-1"] });
+  let modelCalls = 0;
+  const publicAdapter = async () => {
+    writeFileSync(s.configPath, JSON.stringify({ ...s.config, operatorOptIn: false }));
+    return [{ url: "https://example.com/docs", text: "Public evidence.", fetchedAt: NOW }];
+  };
+  await assert.rejects(() => runScout({
+    configPath: s.configPath, dbPath: s.dbPath, sources: ["https://example.com/docs"], scoutId: "scout-1", accounts: ["acct-1"],
+    authorityCheck: authority, publicAdapter,
+    modelAdapter: async () => { modelCalls += 1; return JSON.stringify({ opportunities: [opportunity()] }); },
+    isModelAvailable: () => true,
+  }), /opt-in/);
+  assert.equal(modelCalls, 0);
+  assert.deepEqual(listJobs({ dbPath: s.dbPath, config, operator: true, accounts: ["acct-1"] }), []);
+
+  const s2 = live();
+  const config2 = loadConfig(s2.configPath);
+  await assert.rejects(() => runScout({
+    configPath: s2.configPath, dbPath: s2.dbPath, sources: ["https://example.com/docs"], scoutId: "scout-1", accounts: ["acct-1"],
+    authorityCheck: () => ({ config: loadConfig(s2.configPath), accounts: ["acct-1"] }),
+    publicAdapter: async () => [{ url: "https://example.com/docs", text: "Public evidence.", fetchedAt: NOW }],
+    modelAdapter: async () => {
+      writeFileSync(s2.configPath, JSON.stringify({ ...s2.config, accounts: [] }));
+      return JSON.stringify({ opportunities: [opportunity()] });
+    },
+    isModelAvailable: () => true,
+  }), /account authority changed/);
+  assert.deepEqual(listJobs({ dbPath: s2.dbPath, config: config2, operator: true, accounts: ["acct-1"] }), []);
+
+  const s3 = live();
+  const config3 = loadConfig(s3.configPath);
+  process.env.PAUSED_SCOUT_TOKEN = "paused-token";
+  const pausedHash = createHash("sha256").update("paused-token").digest("hex");
+  writeFileSync(s3.statusesPath, JSON.stringify({ version: 1, grants: [{ id: "paused", tokenFamily: "paused", roles: ["scout"], accounts: ["acct-1"], tokenEnv: "PAUSED_SCOUT_TOKEN", tokenHash: pausedHash }] }));
+  await assert.rejects(() => runScout({
+    configPath: s3.configPath, dbPath: s3.dbPath, sources: ["https://example.com/docs"], scoutId: "paused", accounts: ["acct-1"],
+    authorityCheck: () => ({ config: loadConfig(s3.configPath), accounts: verifyLocalGrant(s3.statusesPath, "paused").accounts }),
+    publicAdapter: async () => [{ url: "https://example.com/docs", text: "Public evidence.", fetchedAt: NOW }],
+    modelAdapter: async () => {
+      writeFileSync(s3.statusesPath, JSON.stringify({ version: 1, grants: [] }));
+      return JSON.stringify({ opportunities: [opportunity()] });
+    },
+    isModelAvailable: () => true,
+  }), /unknown local scout grant/);
+  assert.deepEqual(listJobs({ dbPath: s3.dbPath, config: config3, operator: true, accounts: ["acct-1"] }), []);
 });

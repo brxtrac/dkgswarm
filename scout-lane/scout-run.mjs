@@ -4,6 +4,7 @@
 // and DKG_SCOUT_MODEL_ENDPOINT / DKG_SCOUT_API_KEY in the process environment.
 import { readFileSync } from "node:fs";
 import { runScout, createHttpModelAdapter, createPublicReadAdapter } from "./scout.mjs";
+import { loadConfig } from "./jobs.mjs";
 import { verifyLocalGrant } from "./capabilities.mjs";
 
 const args = process.argv.slice(2);
@@ -16,12 +17,11 @@ const dbPath = arg("db", process.env.SCOUT_LANE_DB);
 const sourcesPath = arg("sources");
 const capabilitiesPath = arg("capabilities", process.env.SCOUT_LANE_CAPABILITIES);
 const grantId = arg("grant", process.env.DKG_SCOUT_GRANT);
-const grantToken = arg("token", process.env.DKG_SCOUT_GRANT_TOKEN);
 if (!configPath || !dbPath || !sourcesPath || !capabilitiesPath || !grantId) {
   console.error("--config, --db, --sources, --capabilities and --grant are required");
   process.exit(2);
 }
-const grant = verifyLocalGrant(capabilitiesPath, grantId, grantToken);
+const grant = verifyLocalGrant(capabilitiesPath, grantId);
 const endpoint = process.env.DKG_SCOUT_MODEL_ENDPOINT;
 const apiKey = process.env.DKG_SCOUT_API_KEY;
 if (!endpoint || !apiKey) {
@@ -30,8 +30,13 @@ if (!endpoint || !apiKey) {
 }
 const parsed = JSON.parse(readFileSync(sourcesPath, "utf8"));
 const sources = (Array.isArray(parsed) ? parsed : parsed.sources || []).map((row) => typeof row === "string" ? row : row.url);
+const authorityCheck = () => {
+  const currentGrant = verifyLocalGrant(capabilitiesPath, grantId);
+  const currentConfig = loadConfig(configPath, { now: Date.now() });
+  return { config: currentConfig, accounts: currentGrant.accounts };
+};
 const result = await runScout({
-  configPath, dbPath, sources, scoutId: grant.id, accounts: grant.accounts,
+  configPath, dbPath, sources, scoutId: grant.id, accounts: grant.accounts, authorityCheck,
   publicAdapter: createPublicReadAdapter(),
   modelAdapter: createHttpModelAdapter({ endpoint, apiKey }),
 });

@@ -7,6 +7,7 @@
       "roles": ["scout"],
       "accounts": ["replace-with-approved-account"],
       "tokenEnv": "DKG_SCOUT_GRANT_TOKEN",
+      "tokenHash": "replace-with-sha256-hex-of-the-local-token",
       "revokedAt": null
     }
   ]

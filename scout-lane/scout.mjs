@@ -124,22 +124,33 @@ export function createHttpModelAdapter({ endpoint, apiKey, fetchImpl = fetch, ma
 
 export async function runScout({
   configPath, dbPath, sources, scoutId, accounts, modelAdapter, publicAdapter,
-  now = Date.now(), isModelAvailable,
+  authorityCheck, now = Date.now(), isModelAvailable,
 }) {
-  const config = loadConfig(configPath, { now, isModelAvailable });
-  if (config.mode !== "live") throw new Error("scout execution requires live mode with a verified model");
-  if (!config.operatorOptIn) throw new Error("operator opt-in is required");
   if (!scoutId) throw new Error("scout identity required");
-  if (!Array.isArray(accounts) || !accounts.length) throw new Error("scout account grant required");
   if (!Array.isArray(sources) || !sources.length) throw new Error("public source URLs required");
+  const refresh = async () => {
+    const next = authorityCheck
+      ? await authorityCheck()
+      : { config: loadConfig(configPath, { now, isModelAvailable }), accounts };
+    if (!next?.config || !Array.isArray(next.accounts) || !next.accounts.length) throw new Error("scout account grant required");
+    if (next.config.mode !== "live") throw new Error("scout execution requires live mode with a verified model");
+    if (!next.config.operatorOptIn) throw new Error("operator opt-in is required");
+    if (!next.accounts.every((account) => next.config.accounts.includes(account))) throw new Error("scout account authority changed");
+    return next;
+  };
+  let current = await refresh();
   const read = publicAdapter || createPublicReadAdapter();
   const evidence = await read(sources);
+  current = await refresh();
   if (!evidence.length) return { abstained: true, reason: "no public evidence retrieved", accepted: [], rejected: [] };
-  const prompt = buildPrompt(evidence, { maxBriefs: config.limits.maxBriefsPerRun, accounts: config.accounts });
-  const raw = await modelAdapter({ model: config.scoutModel, system: prompt.system, user: prompt.user });
+  const prompt = buildPrompt(evidence, { maxBriefs: current.config.limits.maxBriefsPerRun, accounts: current.config.accounts });
+  const usedModel = current.config.scoutModel;
+  const raw = await modelAdapter({ model: usedModel, system: prompt.system, user: prompt.user });
+  current = await refresh();
+  if (current.config.scoutModel !== usedModel) throw new Error("scout model authority changed during the run");
   const parsed = parseScoutOutput(raw);
   if (parsed.abstain) return { abstained: true, reason: parsed.reason, accepted: [], rejected: [] };
-  if (parsed.opportunities.length > config.limits.maxBriefsPerRun) throw new Error("scout model exceeded maxBriefsPerRun");
+  if (parsed.opportunities.length > current.config.limits.maxBriefsPerRun) throw new Error("scout model exceeded maxBriefsPerRun");
   const allowed = new Set(evidence.map((item) => canonicalPublicUrl(item.url)));
   for (const opportunity of parsed.opportunities) {
     const cited = [
@@ -151,6 +162,6 @@ export async function runScout({
       throw new Error("scout reply/quote target was not fetched");
     }
   }
-  const result = enqueueBatchCore({ dbPath, config, scoutId, opportunities: parsed.opportunities, accounts, now });
+  const result = enqueueBatchCore({ dbPath, config: current.config, scoutId, opportunities: parsed.opportunities, accounts: current.accounts, now });
   return { abstained: false, accepted: result.accepted, rejected: result.rejected };
 }

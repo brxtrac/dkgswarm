@@ -461,6 +461,7 @@ export function beginSubmitCore({ dbPath, config, jobId, workerId, fencingToken,
 export function reportCore({ dbPath, config, jobId, workerId, fencingToken, revision, status, submitToken, receipt, content, reason, now = Date.now() }) {
   assertEnabled(config);
   if (!REPORT_STATUSES.has(status)) throw new LaneError("invalid-status", "unsupported report status");
+  if (status !== "published" && receipt) throw new LaneError("invalid-receipt", "receipt fields are allowed only for an authorized published report");
   const db = openDb(dbPath);
   try {
     maintenanceCore(db, config, now);

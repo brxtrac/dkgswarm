@@ -58,7 +58,7 @@ test("real HTTP MCP path uses OAuth token family and revokes immediately", async
     resource: mcpUrl.href, tokenFamilyId: "fam-http", expiresAt: Date.now() + 3600_000,
   });
   writeFileSync(s.statusesPath, JSON.stringify({ version: 1, grants: [
-    { id: "worker-http", tokenFamily: "fam-http", roles: ["scout", "worker", "operator"], accounts: ["acct-1"] },
+    { id: "worker-http", tokenFamily: "fam-http", roles: ["scout", "worker"], accounts: ["acct-1"] },
   ] }));
 
   const client = new Client({ name: "test-client", version: "1.0.0" });
@@ -70,13 +70,37 @@ test("real HTTP MCP path uses OAuth token family and revokes immediately", async
   assert.equal(JSON.parse(queued.content[0].text).accepted.length, 1);
   const claimed = JSON.parse((await client.callTool({ name: "scout_job_claim", arguments: {} })).content[0].text);
   assert.equal(claimed.claimed, true);
+  for (const status of ["drafted", "failed", "skipped", "uncertain"]) {
+    const badReceipt = await client.callTool({
+      name: "scout_job_report",
+      arguments: {
+        jobId: claimed.job.id, fencingToken: claimed.fencingToken, revision: claimed.revision,
+        status, content: status === "drafted" ? "A short HTTP lifecycle draft with a public source." : undefined,
+        reason: status === "drafted" ? undefined : "nonpublication HTTP report",
+        receiptUrl: "https://x.com/i/status/1234567890",
+      },
+    });
+    assert.equal(badReceipt.isError, true);
+    assert.match(badReceipt.content[0].text, /receipt fields/);
+  }
   const drafted = JSON.parse((await client.callTool({
     name: "scout_job_report",
     arguments: { jobId: claimed.job.id, fencingToken: claimed.fencingToken, revision: claimed.revision, status: "drafted", content: "A short HTTP lifecycle draft with a public source." },
   })).content[0].text);
   assert.equal(drafted.ok, true);
   const listed = await client.callTool({ name: "scout_jobs_list", arguments: {} });
-  assert.equal(JSON.parse(listed.content[0].text).jobs[0].state, "draft");
+  const listedJob = JSON.parse(listed.content[0].text).jobs[0];
+  assert.equal(listedJob.state, "draft");
+  assert.equal(listedJob.resultStatus, null);
+  assert.equal(listedJob.receipt, null);
+
+  await client.callTool({ name: "scout_job_enqueue", arguments: { opportunities: [opportunity({ topic: "Second removed-account topic", brief: "A second queued job for account-removal regression." })] } });
+  writeFileSync(s.configPath, JSON.stringify({ ...s.config, accounts: [] }));
+  const hidden = await client.callTool({ name: "scout_jobs_list", arguments: {} });
+  assert.deepEqual(JSON.parse(hidden.content[0].text).jobs, []);
+  const deniedClaim = await client.callTool({ name: "scout_job_claim", arguments: {} });
+  assert.equal(deniedClaim.isError, true);
+  assert.match(deniedClaim.content[0].text, /no currently approved account/);
 
   writeFileSync(s.statusesPath, JSON.stringify({ version: 1, grants: [] }));
   const revoked = await client.callTool({ name: "scout_jobs_list", arguments: {} });

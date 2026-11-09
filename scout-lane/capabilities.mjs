@@ -28,6 +28,7 @@ export function loadGrants(path) {
       roles: [...new Set(grant.roles)],
       accounts: Array.isArray(grant.accounts) ? grant.accounts.filter((a) => typeof a === "string" && a) : [],
       tokenEnv: typeof grant.tokenEnv === "string" ? grant.tokenEnv : null,
+      tokenHash: typeof grant.tokenHash === "string" ? grant.tokenHash.toLowerCase() : null,
       revokedAt: grant.revokedAt || null,
     });
   }
@@ -68,10 +69,10 @@ export function verifyLocalGrant(path, grantId, suppliedToken) {
   if (!grant) throw new CapabilityError("forbidden", "unknown local scout grant");
   if (!grant.roles.includes("scout")) throw new CapabilityError("forbidden", "scout capability required");
   if (!grant.accounts.length) throw new CapabilityError("no-account-scope", "local scout grant has no approved account");
-  const expected = grant.tokenEnv ? process.env[grant.tokenEnv] : undefined;
-  const supplied = String(suppliedToken ?? "");
-  if (!expected || !supplied || expected.length !== supplied.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(supplied))) {
-    throw new CapabilityError("unauthorized", "invalid local scout credential");
-  }
+  const supplied = String(suppliedToken === undefined ? (grant.tokenEnv ? process.env[grant.tokenEnv] : "") ?? "" : suppliedToken);
+  const expectedHash = grant.tokenHash;
+  if (!supplied || !expectedHash || !/^[0-9a-f]{64}$/.test(expectedHash)) throw new CapabilityError("unauthorized", "invalid local scout credential");
+  const actualHash = createHash("sha256").update(supplied).digest();
+  if (!timingSafeEqual(actualHash, Buffer.from(expectedHash, "hex"))) throw new CapabilityError("unauthorized", "invalid local scout credential");
   return grant;
 }

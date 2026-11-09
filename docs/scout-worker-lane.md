@@ -53,8 +53,12 @@ every call:
 ```
 
 Roles are `scout`, `worker`, `publisher`, `operator`. Every grant must list approved
-accounts; a grant without an account is fail-closed. Operator list/resolve is scoped to
-those accounts, and resolution checks the job account before changing state. Deleting the grant or setting a valid `revokedAt` takes effect on the next
+accounts; a grant without an account is fail-closed. Worker list/claim use the intersection
+of the grant accounts and the current operator allowlist, so removing an account hides
+queued and already-owned jobs from worker responses. Operator list/resolve remains an
+explicit historical-reconciliation path scoped to its own grant accounts. Receipt URLs,
+external IDs and publication status are accepted only on the authorized published path
+or explicit operator reconciliation; non-publication reports reject them. Deleting the grant or setting a valid `revokedAt` takes effect on the next
 call. A caller cannot supply its own worker id, account, or role.
 
 ## Authoritative state and durable submit
@@ -105,8 +109,13 @@ node scout-lane/scout-run.mjs --config <private> --db <private> \
   --sources <public-urls.json> --capabilities <private> --grant <grant-id>
 ```
 
-The grant token is read from `tokenEnv` or `DKG_SCOUT_GRANT_TOKEN`. Fetched URLs are the
-only citations accepted; fabricated citations and unfetched reply targets are rejected.
+The local grant authenticates only through its configured `tokenEnv` variable, compared
+against the grant's SHA-256 `tokenHash`. There is no `--token` argument and no fallback
+variable: if `tokenEnv` names `DKG_SCOUT_GRANT_TOKEN`, that is the variable read; otherwise
+that variable is irrelevant. The runner re-reads the current config and grant after the
+public fetch and again after model output, so a disabled lane, revoked grant or removed
+account fails before inference or enqueue. Fetched URLs are the only citations accepted;
+fabricated citations and unfetched reply targets are rejected.
 
 ## DKG sub-graph adapter
 
