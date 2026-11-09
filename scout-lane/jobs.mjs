@@ -420,7 +420,7 @@ function owned(db, { jobId, workerId, fencingToken, revision, now, states }) {
   if (!job) return { job: null, code: "not-found" };
   if (!states.includes(job.state)) return { job, code: "wrong-state" };
   const fenced = job.worker_id === workerId && job.fencing_token === Number(fencingToken) && job.revision === Number(revision);
-  const live = job.state === "claimed" ? job.lease_until >= now : job.state === "submitting" ? job.submit_deadline >= now : true;
+  const live = job.state === "claimed" ? job.lease_until >= now : job.state === "submitting" ? job.submit_deadline >= now && job.lease_until >= now : true;
   return fenced && live ? { job } : { job, code: "stale" };
 }
 
@@ -445,7 +445,7 @@ export function beginSubmitCore({ dbPath, config, jobId, workerId, fencingToken,
       const token = randomUUID();
       const deadline = now + config.limits.submitTimeoutMinutes * 60_000;
       db.prepare(`UPDATE jobs SET state='submitting', submit_token=?, submit_started_at=?, submit_deadline=?,
-        quota_reserved=1, revision=revision+1, updated_at=? WHERE id=?`).run(token, now, deadline, now, jobId);
+        lease_until=?, quota_reserved=1, revision=revision+1, updated_at=? WHERE id=?`).run(token, now, deadline, deadline, now, jobId);
       db.exec("COMMIT");
       return { ok: true, submitToken: token, revision: found.job.revision + 1, submitDeadline: deadline };
     } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
@@ -472,8 +472,8 @@ export function reportCore({ dbPath, config, jobId, workerId, fencingToken, revi
         receipt = { url: canonicalPublicUrl(receipt.url), externalId: receipt.externalId ? String(receipt.externalId).slice(0, 120) : null, observedAt: receipt.observedAt || null };
         const gate = preflightCore(job, config, now, { forSubmit: true, requireLease: false });
         if (!gate.ok) { db.exec("ROLLBACK"); return { ok: false, code: "preflight", checks: gate.checks }; }
-        if (!found.job.quota_reserved && !reserveQuota(db, now, `publish:${job.accountScope}`, config.limits.maxPerAccountPerDay)) {
-          db.exec("ROLLBACK"); return { ok: false, code: "limit", reason: "per-account daily publish limit" };
+        if (!found.job.quota_reserved) {
+          db.exec("ROLLBACK"); return { ok: false, code: "quota-unreserved", reason: "publish quota must be reserved before submit" };
         }
       }
       if (status === "uncertain" && !sameSecret(submitToken, found.job.submit_token)) { db.exec("ROLLBACK"); return { ok: false, code: "submit-token" }; }
