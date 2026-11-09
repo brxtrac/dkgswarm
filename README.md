@@ -43,6 +43,7 @@ DKGSwarm is now an OpenDKG project: future development happens under the [OpenDK
 | [`writer-invitations.mjs`](writer-invitations.mjs), [`policy-integrity.mjs`](policy-integrity.mjs), [`publish-policy.mjs`](publish-policy.mjs) | Writer invitation expiry, owner-policy digest verification, guarded publication |
 | [`policy-v18.json`](policy-v18.json), [`policy-current.example.json`](policy-current.example.json) | Public sample policy and pointer format; not the live private pointer |
 | [`collector/`](collector/) | Scheduled observations, curator review, retired webhook routes |
+| [`scout-lane/`](scout-lane/) | Opt-in scout → worker job lane, disabled by default; design in [`docs/scout-worker-lane.md`](docs/scout-worker-lane.md) |
 | [`site/`](site/) | Static public pages and memory garden |
 | [`docs/`](docs/) | Source-of-record boundaries and nonactivating OpenDKG/platform drafts |
 | [`test/`](test/), [`collector/test/`](collector/test/) | Behavior tests |

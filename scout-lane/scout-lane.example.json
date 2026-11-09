@@ -1,0 +1,37 @@
+{
+  "mode": "off",
+  "operatorOptIn": false,
+  "scoutModel": null,
+  "graph": {
+    "contextGraphId": "trac-marketing",
+    "subGraphName": "scout-jobs",
+    "view": "shared-working-memory",
+    "mirrorEnabled": false
+  },
+  "publish": {
+    "defaultMode": "draft",
+    "preauthorized": false,
+    "allowedMethods": ["manual"]
+  },
+  "accounts": [],
+  "limits": {
+    "leaseMinutes": 10,
+    "jobTtlMinutes": 120,
+    "failureCooldownMinutes": 360,
+    "maxClaimsPerDay": 10,
+    "maxPerAccountPerDay": 3,
+    "maxBriefsPerRun": 5
+  },
+  "roles": {
+    "scouts": [],
+    "workers": [],
+    "publishers": [],
+    "operators": []
+  },
+  "tokens": {
+    "scouts": {},
+    "workers": {},
+    "publishers": {},
+    "operators": {}
+  }
+}

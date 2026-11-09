@@ -9,7 +9,8 @@
   "type": "module",
   "main": "server.mjs",
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "test:scout": "node --test scout-lane/test/*.test.mjs"
   },
   "keywords": [],
   "author": "",
