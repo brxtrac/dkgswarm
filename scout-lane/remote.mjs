@@ -118,6 +118,7 @@ export function createScoutTools({ getAuth, query, json, configPath, capabilitie
       const cfg = config();
       const job = getJob({ dbPath, config: cfg, jobId });
       if (!job || job.workerId !== grant.id) throw new Error("job ownership mismatch");
+      if (!grantAllowsAccount(grant, job.accountScope)) throw new Error("job account is outside this grant");
       const result = beginSubmitCore({ dbPath, config: cfg, jobId, workerId: grant.id, fencingToken, revision, now: now() });
       return json(result);
     },
@@ -148,6 +149,7 @@ export function createScoutTools({ getAuth, query, json, configPath, capabilitie
       const cfg = config();
       const job = getJob({ dbPath, config: cfg, jobId });
       if (!job || job.workerId !== grant.id) throw new Error("job ownership mismatch");
+      if (!grantAllowsAccount(grant, job.accountScope)) throw new Error("job account is outside this grant");
       const result = reportCore({
         dbPath, config: cfg, jobId, workerId: grant.id, fencingToken, revision, status, submitToken, content, reason,
         receipt: receiptUrl ? { url: receiptUrl, externalId, observedAt: new Date(now()).toISOString() } : null,
