@@ -146,6 +146,9 @@ export function openDb(path) {
       reason TEXT NOT NULL
     );
   `);
+  const columns = new Set(db.prepare("PRAGMA table_info(jobs)").all().map((row) => row.name));
+  if (!columns.has("quota_day")) db.exec("ALTER TABLE jobs ADD COLUMN quota_day INTEGER");
+  if (!columns.has("quota_scope")) db.exec("ALTER TABLE jobs ADD COLUMN quota_scope TEXT");
   return db;
 }
 

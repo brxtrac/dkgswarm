@@ -249,3 +249,17 @@ test("accountless grants fail closed and operator resolution is account-scoped",
     jobId: claimed.job.id, resolution: "retry", reason: "not this account",
   }), /outside this operator grant/);
 });
+
+test("operator listing is limited to granted accounts", async () => {
+  const s = live();
+  grants(s.statusesPath, [
+    { id: "scout-main", tokenFamily: "fam-scout", roles: ["scout"], accounts: ["acct-1"] },
+    { id: "operator-other", tokenFamily: "fam-op2", roles: ["operator"], accounts: ["acct-2"] },
+  ]);
+  const scout = harness(s, { family: "fam-scout" }).tools;
+  const operator = harness(s, { family: "fam-op2" }).tools;
+  await scout.scout_job_enqueue.handler({ opportunities: [opportunity()] });
+  const listed = JSON.parse((await operator.scout_jobs_list.handler({})).content[0].text);
+  assert.deepEqual(listed.jobs, []);
+  assert.deepEqual(listed.accountScopes, ["acct-2"]);
+});
