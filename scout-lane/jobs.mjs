@@ -122,6 +122,8 @@ export function openDb(path) {
       submit_started_at INTEGER,
       submit_deadline INTEGER,
       quota_reserved INTEGER NOT NULL DEFAULT 0,
+      quota_day INTEGER,
+      quota_scope TEXT,
       receipt_json TEXT,
       result_url TEXT,
       result_status TEXT,
@@ -437,15 +439,16 @@ export function beginSubmitCore({ dbPath, config, jobId, workerId, fencingToken,
       if (job.publishMode !== "preauthorized") { db.exec("ROLLBACK"); throw new LaneError("draft-only", "draft-only jobs cannot begin an external submit"); }
       const gate = preflightCore(job, config, now, { forSubmit: true });
       if (!gate.ok) { db.exec("ROLLBACK"); return { ok: false, code: "preflight", checks: gate.checks }; }
-      if (!found.job.quota_reserved) {
-        if (!reserveQuota(db, now, `publish:${job.accountScope}`, config.limits.maxPerAccountPerDay)) {
-          db.exec("ROLLBACK"); return { ok: false, code: "limit", reason: "per-account daily publish limit" };
-        }
+      const quotaScope = `publish:${job.accountScope}`;
+      if (!reserveQuota(db, now, quotaScope, config.limits.maxPerAccountPerDay)) {
+        db.exec("ROLLBACK"); return { ok: false, code: "limit", reason: "per-account daily publish limit" };
       }
       const token = randomUUID();
       const deadline = now + config.limits.submitTimeoutMinutes * 60_000;
       db.prepare(`UPDATE jobs SET state='submitting', submit_token=?, submit_started_at=?, submit_deadline=?,
-        lease_until=?, quota_reserved=1, revision=revision+1, updated_at=? WHERE id=?`).run(token, now, deadline, deadline, now, jobId);
+        lease_until=?, quota_reserved=1, quota_day=?, quota_scope=?, revision=revision+1, updated_at=? WHERE id=?`).run(
+        token, now, deadline, deadline, dayStart(now), quotaScope, now, jobId,
+      );
       db.exec("COMMIT");
       return { ok: true, submitToken: token, revision: found.job.revision + 1, submitDeadline: deadline };
     } catch (error) { try { db.exec("ROLLBACK"); } catch {} throw error; }
@@ -513,7 +516,7 @@ export function resolveUncertainCore({ dbPath, config, jobId, resolution, receip
       const job = db.prepare("SELECT * FROM jobs WHERE id = ?").get(jobId);
       if (!job || job.state !== "uncertain") { db.exec("ROLLBACK"); return { ok: false, code: "not-uncertain" }; }
       if (resolution === "retry") {
-        db.prepare("UPDATE jobs SET state='queued', revision=revision+1, worker_id=NULL, lease_until=NULL, submit_token=NULL, updated_at=? WHERE id=?").run(now, jobId);
+        db.prepare("UPDATE jobs SET state='queued', revision=revision+1, worker_id=NULL, lease_until=NULL, submit_token=NULL, quota_reserved=0, quota_day=NULL, quota_scope=NULL, updated_at=? WHERE id=?").run(now, jobId);
       } else {
         if (resolution === "verified" && (!receipt || !receipt.url)) { db.exec("ROLLBACK"); throw new LaneError("missing-receipt", "verified requires a public receipt URL"); }
         const rec = resolution === "verified" ? { url: canonicalPublicUrl(receipt.url), externalId: receipt.externalId ? String(receipt.externalId).slice(0, 120) : null, observedAt: receipt.observedAt || null } : null;
@@ -542,8 +545,12 @@ export function listJobs({ dbPath, config, state, workerId, accounts, operator =
       if (!workerId || !allowed) return [];
       conditions.push("(worker_id = ? OR state='queued')");
       params.push(workerId);
+    }
+    if (allowed) {
       conditions.push(`account_scope IN (${allowed.map(() => "?").join(",")})`);
       params.push(...allowed);
+    } else {
+      return [];
     }
     const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
     return db.prepare(`SELECT * FROM jobs ${where} ORDER BY updated_at DESC LIMIT ?`).all(...params, Math.min(100, limit)).map(publicJob);

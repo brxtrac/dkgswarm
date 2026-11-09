@@ -1,7 +1,7 @@
 // Bounded executable scout. Public reads, a single exact model id, JSON-only
 // extraction, abstention, validation and enqueue. Adapters are injected so
 // tests run offline; no model is invoked during pre-production.
-import { loadConfig, enqueueBatchCore } from "./jobs.mjs";
+import { loadConfig, enqueueBatchCore, canonicalPublicUrl } from "./jobs.mjs";
 import { fetchPublicSource } from "./fetch-public.mjs";
 
 const SYSTEM = [
@@ -52,23 +52,70 @@ export function parseScoutOutput(raw) {
   return { abstain: false, opportunities: value.opportunities };
 }
 
-export function createHttpModelAdapter({ endpoint, apiKey, fetchImpl = fetch }) {
+export function wireModel(model) {
+  const value = String(model ?? "");
+  if (!value.startsWith("9router/") || value.length <= "9router/".length) throw new Error("model must use the verified 9router/ provider prefix");
+  return value.slice("9router/".length);
+}
+
+export function validateModelEndpoint(endpoint) {
+  let url;
+  try { url = new URL(String(endpoint)); } catch { throw new Error("model endpoint is not a URL"); }
+  if (url.username || url.password || url.hash) throw new Error("model endpoint must not contain credentials or fragments");
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const loopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
+    throw new Error("model endpoint must use HTTPS unless it is an explicit loopback address");
+  }
+  return url;
+}
+
+async function readBounded(response, maxBytes = 256 * 1024) {
+  if (typeof response.body?.getReader !== "function") {
+    if (typeof response.text === "function") {
+      const text = await response.text();
+      if (Buffer.byteLength(text) > maxBytes) throw new Error("model response exceeds size limit");
+      return text;
+    }
+    const payload = await response.json();
+    const text = JSON.stringify(payload);
+    if (Buffer.byteLength(text) > maxBytes) throw new Error("model response exceeds size limit");
+    return text;
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > maxBytes) throw new Error("model response exceeds size limit");
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+export function createHttpModelAdapter({ endpoint, apiKey, fetchImpl = fetch, maxTokens = 4096 }) {
   if (!endpoint) throw new Error("model endpoint required");
+  const base = validateModelEndpoint(endpoint).href.replace(/\/$/, "");
   return async function extract({ model, system, user }) {
-    const response = await fetchImpl(`${String(endpoint).replace(/\/$/, "")}/chat/completions`, {
+    const response = await fetchImpl(`${base}/chat/completions`, {
       method: "POST",
+      redirect: "error",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model,
+        model: wireModel(model),
         messages: [{ role: "system", content: system }, { role: "user", content: user }],
         temperature: 0,
-        max_tokens: 1200,
+        max_tokens: Math.min(8192, Math.max(4096, Number(maxTokens) || 4096)),
         response_format: { type: "json_object" },
       }),
       signal: AbortSignal.timeout(60_000),
     });
     if (!response.ok) throw new Error(`scout model request failed: ${response.status}`);
-    const payload = await response.json();
+    const text = await readBounded(response);
+    let payload;
+    try { payload = JSON.parse(text); } catch { throw new Error("model response is not JSON"); }
     const content = payload?.choices?.[0]?.message?.content;
     if (typeof content !== "string") throw new Error("scout model returned no content");
     return content;
@@ -76,13 +123,14 @@ export function createHttpModelAdapter({ endpoint, apiKey, fetchImpl = fetch }) 
 }
 
 export async function runScout({
-  configPath, dbPath, sources, scoutId, modelAdapter, publicAdapter,
+  configPath, dbPath, sources, scoutId, accounts, modelAdapter, publicAdapter,
   now = Date.now(), isModelAvailable,
 }) {
   const config = loadConfig(configPath, { now, isModelAvailable });
   if (config.mode !== "live") throw new Error("scout execution requires live mode with a verified model");
   if (!config.operatorOptIn) throw new Error("operator opt-in is required");
   if (!scoutId) throw new Error("scout identity required");
+  if (!Array.isArray(accounts) || !accounts.length) throw new Error("scout account grant required");
   if (!Array.isArray(sources) || !sources.length) throw new Error("public source URLs required");
   const read = publicAdapter || createPublicReadAdapter();
   const evidence = await read(sources);
@@ -92,6 +140,17 @@ export async function runScout({
   const parsed = parseScoutOutput(raw);
   if (parsed.abstain) return { abstained: true, reason: parsed.reason, accepted: [], rejected: [] };
   if (parsed.opportunities.length > config.limits.maxBriefsPerRun) throw new Error("scout model exceeded maxBriefsPerRun");
-  const result = enqueueBatchCore({ dbPath, config, scoutId, opportunities: parsed.opportunities, accounts: config.accounts, now });
+  const allowed = new Set(evidence.map((item) => canonicalPublicUrl(item.url)));
+  for (const opportunity of parsed.opportunities) {
+    const cited = [
+      ...(Array.isArray(opportunity.sources) ? opportunity.sources.map((source) => source?.url) : []),
+      ...(Array.isArray(opportunity.evidence) ? opportunity.evidence.map((item) => item?.url) : []),
+    ].filter(Boolean).map((url) => canonicalPublicUrl(url));
+    for (const url of cited) if (!allowed.has(url)) throw new Error("scout output cites a URL that was not fetched");
+    if (opportunity.action !== "original" && opportunity.targetUrl && !allowed.has(canonicalPublicUrl(opportunity.targetUrl))) {
+      throw new Error("scout reply/quote target was not fetched");
+    }
+  }
+  const result = enqueueBatchCore({ dbPath, config, scoutId, opportunities: parsed.opportunities, accounts, now });
   return { abstained: false, accepted: result.accepted, rejected: result.rejected };
 }

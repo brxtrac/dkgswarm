@@ -1,4 +1,13 @@
 {
   "version": 1,
-  "grants": []
+  "grants": [
+    {
+      "id": "replace-with-scout-id",
+      "tokenFamily": "replace-with-oauth-token-family",
+      "roles": ["scout"],
+      "accounts": ["replace-with-approved-account"],
+      "tokenEnv": "DKG_SCOUT_GRANT_TOKEN",
+      "revokedAt": null
+    }
+  ]
 }

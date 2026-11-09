@@ -21,6 +21,11 @@ function authContext(getAuth) {
 
 export function createScoutTools({ getAuth, query, json, configPath, capabilitiesPath, dbPath, now = Date.now }) {
   const config = () => loadConfig(configPath, { now: now() });
+  const activeConfig = () => {
+    const cfg = config();
+    if (cfg.mode === "off" || !cfg.operatorOptIn) throw new Error("scout lane is disabled");
+    return cfg;
+  };
   const listTool = {
     name: "scout_jobs_list",
     definition: {
@@ -33,9 +38,9 @@ export function createScoutTools({ getAuth, query, json, configPath, capabilitie
       const grant = grantFor(auth, capabilitiesPath);
       const operator = grant.roles.includes("operator");
       if (!operator && !grant.roles.includes("worker")) throw new Error("worker or operator capability required");
-      const cfg = config();
+      const cfg = activeConfig();
       const jobs = listJobs({ dbPath, config: cfg, state, workerId: grant.id, accounts: grant.accounts, operator, limit: limit ?? 20 });
-      return json({ jobs, operator, accountScopes: operator ? [] : grant.accounts });
+      return json({ jobs, operator, accountScopes: grant.accounts });
     },
   };
 
@@ -68,9 +73,10 @@ export function createScoutTools({ getAuth, query, json, configPath, capabilitie
     handler: async ({ jobId, fencingToken, revision }) => {
       const auth = authContext(getAuth);
       const grant = requireRole(auth, capabilitiesPath, "worker");
-      const cfg = config();
+      const cfg = activeConfig();
       const job = getJob({ dbPath, config: cfg, jobId });
       if (!job || job.workerId !== grant.id || job.fencingToken !== fencingToken || job.revision !== revision) throw new Error("job ownership or fence mismatch");
+      if (!cfg.accounts.includes(job.accountScope)) throw new Error("job account is no longer operator-approved");
       if (!["claimed", "submitting"].includes(job.state)) throw new Error("job is not claimed");
       if (job.expiresAt <= now()) throw new Error("job expired");
       if (!grantAllowsAccount(grant, job.accountScope)) throw new Error("job account is outside this grant");
@@ -95,7 +101,7 @@ export function createScoutTools({ getAuth, query, json, configPath, capabilitie
     handler: async ({ opportunities }) => {
       const auth = authContext(getAuth);
       const grant = requireRole(auth, capabilitiesPath, "scout");
-      const cfg = config();
+      const cfg = activeConfig();
       const result = enqueueBatchCore({ dbPath, config: cfg, scoutId: grant.id, opportunities, accounts: grant.accounts, now: now() });
       return json(result);
     },
@@ -115,7 +121,7 @@ export function createScoutTools({ getAuth, query, json, configPath, capabilitie
     handler: async ({ jobId, fencingToken, revision }) => {
       const auth = authContext(getAuth);
       const grant = requireRoles(auth, capabilitiesPath, ["worker", "publisher"]);
-      const cfg = config();
+      const cfg = activeConfig();
       const job = getJob({ dbPath, config: cfg, jobId });
       if (!job || job.workerId !== grant.id) throw new Error("job ownership mismatch");
       if (!grantAllowsAccount(grant, job.accountScope)) throw new Error("job account is outside this grant");
@@ -146,7 +152,7 @@ export function createScoutTools({ getAuth, query, json, configPath, capabilitie
       const grant = status === "published"
         ? requireRoles(auth, capabilitiesPath, ["worker", "publisher"])
         : requireRole(auth, capabilitiesPath, "worker");
-      const cfg = config();
+      const cfg = activeConfig();
       const job = getJob({ dbPath, config: cfg, jobId });
       if (!job || job.workerId !== grant.id) throw new Error("job ownership mismatch");
       if (!grantAllowsAccount(grant, job.accountScope)) throw new Error("job account is outside this grant");
@@ -173,8 +179,10 @@ export function createScoutTools({ getAuth, query, json, configPath, capabilitie
     },
     handler: async ({ jobId, resolution, receiptUrl, reason }) => {
       authContext(getAuth);
-      requireRole(getAuth(), capabilitiesPath, "operator");
-      const cfg = config();
+      const grant = requireRole(getAuth(), capabilitiesPath, "operator");
+      const cfg = activeConfig();
+      const job = getJob({ dbPath, config: cfg, jobId });
+      if (!job || !grantAllowsAccount(grant, job.accountScope)) throw new Error("job account is outside this operator grant");
       const result = resolveUncertainCore({
         dbPath, config: cfg, jobId, resolution, reason,
         receipt: receiptUrl ? { url: receiptUrl, observedAt: new Date(now()).toISOString() } : null,

@@ -40,17 +40,26 @@ function defaultLookup(hostname) {
   });
 }
 
-function defaultRequest(url, address, { timeoutMs, maxBytes }) {
+export function createPinnedLookup(address) {
+  const family = address.includes(":") ? 6 : 4;
+  return (_host, options, callback) => {
+    if (options?.all) callback(null, [{ address, family }]);
+    else callback(null, address, family);
+  };
+}
+
+export function defaultRequest(url, address, { timeoutMs, maxBytes, rejectUnauthorized = true }) {
   return new Promise((resolve, reject) => {
     const req = https.request({
       protocol: "https:",
       hostname: url.hostname.replace(/^\[|\]$/g, ""),
-      port: 443,
+      port: Number(url.port || 443),
       path: `${url.pathname}${url.search}`,
       method: "GET",
       headers: { "user-agent": "dkgswarm-scout/1.0", accept: "text/html,text/plain,application/json;q=0.9" },
       servername: url.hostname.replace(/^\[|\]$/g, ""),
-      lookup: (_host, _options, callback) => callback(null, address, address.includes(":") ? 6 : 4),
+      lookup: createPinnedLookup(address),
+      rejectUnauthorized,
       timeout: timeoutMs,
     }, (res) => {
       const chunks = [];
@@ -75,8 +84,9 @@ export async function fetchPublicSource(url, {
   let current = canonicalPublicUrl(url, { requireFetchable: true });
   for (let hop = 0; hop <= maxRedirects; hop += 1) {
     const parsed = new URL(current);
-    const addresses = await lookupImpl(parsed.hostname);
-    const address = (addresses || []).find(isPublicAddress);
+    const raw = await lookupImpl(parsed.hostname);
+    const addresses = (Array.isArray(raw) ? raw : [raw]).map((row) => typeof row === "string" ? row : row?.address);
+    const address = addresses.find(isPublicAddress);
     if (!address) throw new PublicFetchError("private-dns", "public source resolves to a private address");
     const response = await requestImpl(parsed, address, { timeoutMs, maxBytes });
     if ([301, 302, 303, 307, 308].includes(response.statusCode)) {

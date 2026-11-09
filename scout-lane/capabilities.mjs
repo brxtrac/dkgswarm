@@ -27,6 +27,7 @@ export function loadGrants(path) {
       tokenFamily: grant.tokenFamily,
       roles: [...new Set(grant.roles)],
       accounts: Array.isArray(grant.accounts) ? grant.accounts.filter((a) => typeof a === "string" && a) : [],
+      tokenEnv: typeof grant.tokenEnv === "string" ? grant.tokenEnv : null,
       revokedAt: grant.revokedAt || null,
     });
   }
@@ -37,6 +38,7 @@ export function grantFor(auth, path) {
   if (!auth?.family) throw new CapabilityError("unauthenticated", "authenticated token family required");
   const grant = loadGrants(path).get(auth.family);
   if (!grant) throw new CapabilityError("forbidden", "no scout capability grant for this connection");
+  if (!Array.isArray(grant.accounts) || grant.accounts.length === 0) throw new CapabilityError("no-account-scope", "capability grant has no approved account");
   return grant;
 }
 
@@ -59,4 +61,17 @@ export function grantAllowsAccount(grant, account) {
 export function sameToken(a, b) {
   const left = String(a ?? ""), right = String(b ?? "");
   return left.length === right.length && left.length > 0 && timingSafeEqual(Buffer.from(left), Buffer.from(right));
+}
+
+export function verifyLocalGrant(path, grantId, suppliedToken) {
+  const grant = [...loadGrants(path).values()].find((row) => row.id === grantId);
+  if (!grant) throw new CapabilityError("forbidden", "unknown local scout grant");
+  if (!grant.roles.includes("scout")) throw new CapabilityError("forbidden", "scout capability required");
+  if (!grant.accounts.length) throw new CapabilityError("no-account-scope", "local scout grant has no approved account");
+  const expected = grant.tokenEnv ? process.env[grant.tokenEnv] : undefined;
+  const supplied = String(suppliedToken ?? "");
+  if (!expected || !supplied || expected.length !== supplied.length || !timingSafeEqual(Buffer.from(expected), Buffer.from(supplied))) {
+    throw new CapabilityError("unauthorized", "invalid local scout credential");
+  }
+  return grant;
 }

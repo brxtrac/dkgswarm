@@ -2,6 +2,8 @@
 // during pre-production. Create is idempotent; readback verifies what was written.
 import { mirrorPayload, sanitizeSummaryTopic } from "./mirror.mjs";
 
+const NS = "https://www.dkgswarm.com/ontology/scout/";
+
 export class SubgraphError extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
@@ -59,15 +61,45 @@ export async function readbackSummary({ apiBase, token, contextGraphId, subGraph
   return { subject, bindings };
 }
 
+export function verifyReadback(payload, bindings) {
+  const rows = bindings.map((row) => ({ p: typeof row.p === "string" ? row.p : row.p?.value, o: typeof row.o === "string" ? row.o : row.o?.value }));
+  const values = new Map();
+  for (const row of rows) {
+    if (!row.p) continue;
+    const list = values.get(row.p) || [];
+    list.push(row.o);
+    values.set(row.p, list);
+  }
+  const singleValued = new Set([
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#type", "https://schema.org/identifier",
+    "https://schema.org/name", "https://schema.org/actionStatus", `${NS}platform`, `${NS}action`,
+    "https://schema.org/startTime", "https://schema.org/endTime", "https://schema.org/target",
+    "https://schema.org/url",
+  ]);
+  for (const quad of payload.quads) {
+    const actual = values.get(quad.predicate) || [];
+    if (!actual.includes(quad.object)) throw new SubgraphError("readback-mismatch", `readback is missing exact value for ${quad.predicate}`);
+    if (singleValued.has(quad.predicate) && actual.length !== 1) throw new SubgraphError("readback-mismatch", `readback has duplicate values for ${quad.predicate}`);
+  }
+  const serialized = JSON.stringify(rows);
+  for (const forbidden of ["account_scope", "accountScope", "brief", "worker_id", "workerId", "fencing", "revision", "submit_token"]) {
+    if (serialized.includes(forbidden)) throw new SubgraphError("readback-private", "readback contains private job fields");
+  }
+  return true;
+}
+
 export async function mirrorJob({ job, config, apiBase, token, fetchImpl = fetch }) {
+  if (!config.operatorOptIn) throw new SubgraphError("opt-in-required", "graph mirror requires explicit operator opt-in");
   if (config.mode !== "live") throw new SubgraphError("live-only", "graph mirror is available only in live mode");
   if (!config.graph.mirrorEnabled) throw new SubgraphError("disabled", "graph mirror is disabled by the operator");
-  const payload = mirrorPayload(job);
+  if (!config.graph.subGraphName) throw new SubgraphError("destination", "sub-graph destination is required");
+  const payload = mirrorPayload(job, { subGraphName: config.graph.subGraphName });
   await ensureSubGraph({ apiBase, token, contextGraphId: config.graph.contextGraphId, subGraphName: config.graph.subGraphName, fetchImpl });
   const written = await writeSummary({ apiBase, token, contextGraphId: config.graph.contextGraphId, payload, fetchImpl });
   const readback = await readbackSummary({
     apiBase, token, contextGraphId: config.graph.contextGraphId,
     subGraphName: config.graph.subGraphName, subject: payload.subject, fetchImpl,
   });
+  verifyReadback(payload, readback.bindings);
   return { payload, written, readback };
 }

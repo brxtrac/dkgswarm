@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -8,6 +9,13 @@ import {
   listJobs, loadConfig, preflightCore, reportCore, resolveUncertainCore,
 } from "../jobs.mjs";
 import { NOW, opportunity, raceChild, setup } from "./helpers.mjs";
+
+function crashChild({ dbPath, configPath, workerId, now, mode }) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, ["scout-lane/test/submit-crash-child.mjs", dbPath, configPath, workerId, String(now), mode], { stdio: "ignore" });
+    child.on("close", (code, signal) => resolve({ code, signal }));
+  });
+}
 
 const loaded = (s, now = NOW) => loadConfig(s.configPath, { now });
 
@@ -221,6 +229,50 @@ test("expiry is bounded, drafts expire, and uncertain records are preserved", ()
   assert.equal(rediscovered.accepted.length, 1);
 });
 
+test("publish quota charges each submit attempt and a cross-day retry cannot reuse a prior day", () => {
+  const s = setup({
+    mode: "live", scoutModel: "9router/cx/gpt-6.1-sol",
+    publish: { defaultMode: "preauthorized", preauthorized: true, allowedMethods: ["manual"] },
+    limits: { leaseMinutes: 10, jobTtlMinutes: 30, maxJobTtlMinutes: 2880, submitTimeoutMinutes: 1, maxClaimsPerDay: 10, maxBriefsPerDay: 20, maxBriefsPerRun: 5, maxPerAccountPerDay: 1 },
+  });
+  const config = loaded(s);
+  const expiresAt = new Date(NOW + 48 * 60 * 60_000).toISOString();
+  enqueueBatchCore({ dbPath: s.dbPath, config, scoutId: "scout-1", opportunities: [opportunity({ expiresAt }), opportunity({ topic: "Second quota topic", brief: "A second distinct quota fixture brief with a public source.", expiresAt })] });
+  const first = claimCore({ dbPath: s.dbPath, config, workerId: "worker-1", accounts: ["acct-1"], now: NOW });
+  assert.equal(beginSubmitCore({ dbPath: s.dbPath, config, jobId: first.job.id, workerId: "worker-1", fencingToken: first.fencingToken, revision: first.revision, now: NOW }).ok, true);
+  expireJobs({ dbPath: s.dbPath, config, now: NOW + 2 * 60_000 });
+  const day2 = NOW + 24 * 60 * 60_000;
+  resolveUncertainCore({ dbPath: s.dbPath, config, jobId: first.job.id, resolution: "retry", reason: "operator checked day one submit", now: day2 });
+  const again = claimCore({ dbPath: s.dbPath, config, workerId: "worker-2", accounts: ["acct-1"], now: day2 + 1 });
+  assert.equal(again.claimed, true);
+  const day2Begin = beginSubmitCore({ dbPath: s.dbPath, config, jobId: again.job.id, workerId: "worker-2", fencingToken: again.fencingToken, revision: again.revision, now: day2 + 2 });
+  assert.equal(day2Begin.ok, true);
+  const second = claimCore({ dbPath: s.dbPath, config, workerId: "worker-2", accounts: ["acct-1"], now: day2 + 3 });
+  assert.equal(second.claimed, true);
+  const denied = beginSubmitCore({ dbPath: s.dbPath, config, jobId: second.job.id, workerId: "worker-2", fencingToken: second.fencingToken, revision: second.revision, now: day2 + 4 });
+  assert.equal(denied.ok, false);
+  assert.equal(denied.code, "limit");
+});
+
+test("same-day retry must reserve again and cannot exceed the daily publish cap", () => {
+  const s = setup({
+    mode: "live", scoutModel: "9router/cx/gpt-6.1-sol",
+    publish: { defaultMode: "preauthorized", preauthorized: true, allowedMethods: ["manual"] },
+    limits: { leaseMinutes: 10, jobTtlMinutes: 30, maxJobTtlMinutes: 1440, submitTimeoutMinutes: 1, maxClaimsPerDay: 10, maxBriefsPerDay: 20, maxBriefsPerRun: 5, maxPerAccountPerDay: 1 },
+  });
+  const config = loaded(s);
+  enqueueBatchCore({ dbPath: s.dbPath, config, scoutId: "scout-1", opportunities: [opportunity()] });
+  const first = claimCore({ dbPath: s.dbPath, config, workerId: "worker-1", accounts: ["acct-1"], now: NOW });
+  assert.equal(beginSubmitCore({ dbPath: s.dbPath, config, jobId: first.job.id, workerId: "worker-1", fencingToken: first.fencingToken, revision: first.revision, now: NOW }).ok, true);
+  expireJobs({ dbPath: s.dbPath, config, now: NOW + 2 * 60_000 });
+  resolveUncertainCore({ dbPath: s.dbPath, config, jobId: first.job.id, resolution: "retry", reason: "operator checked same day", now: NOW + 3 * 60_000 });
+  const again = claimCore({ dbPath: s.dbPath, config, workerId: "worker-2", accounts: ["acct-1"], now: NOW + 4 * 60_000 });
+  assert.equal(again.claimed, true);
+  const denied = beginSubmitCore({ dbPath: s.dbPath, config, jobId: again.job.id, workerId: "worker-2", fencingToken: again.fencingToken, revision: again.revision, now: NOW + 5 * 60_000 });
+  assert.equal(denied.ok, false);
+  assert.equal(denied.code, "limit");
+});
+
 test("injection markers are data and block external submission, not drafting", () => {
   const s = setup();
   const config = loaded(s);
@@ -238,7 +290,7 @@ test("list returns no jobs without a worker account scope", () => {
   const s = setup();
   enqueueBatchCore({ dbPath: s.dbPath, config: loaded(s), scoutId: "scout-1", opportunities: [opportunity()] });
   assert.deepEqual(listJobs({ dbPath: s.dbPath, config: loaded(s), workerId: "worker-1", accounts: [] }), []);
-  assert.equal(listJobs({ dbPath: s.dbPath, config: loaded(s), operator: true }).length, 1);
+  assert.equal(listJobs({ dbPath: s.dbPath, config: loaded(s), operator: true, accounts: ["acct-1"] }).length, 1);
 });
 
 test("off database stays empty", () => {
@@ -248,4 +300,26 @@ test("off database stays empty", () => {
   const dbPath = join(dir, "jobs.sqlite");
   assert.throws(() => claimCore({ dbPath, config: loadConfig(configPath), workerId: "worker-1", accounts: ["acct-1"] }), /disabled/);
   assert.deepEqual(listJobs({ dbPath, operator: true }), []);
+});
+
+test("real process kill after durable submit becomes uncertain, before submit is reclaimable", async () => {
+  const after = setup({
+    mode: "live", scoutModel: "9router/cx/gpt-6.1-sol",
+    publish: { defaultMode: "preauthorized", preauthorized: true, allowedMethods: ["manual"] },
+  });
+  const afterConfig = loaded(after);
+  enqueueBatchCore({ dbPath: after.dbPath, config: afterConfig, scoutId: "scout-1", opportunities: [opportunity()] });
+  const killedAfter = await crashChild({ dbPath: after.dbPath, configPath: after.configPath, workerId: "worker-1", now: NOW, mode: "after" });
+  assert.equal(killedAfter.signal, "SIGKILL");
+  expireJobs({ dbPath: after.dbPath, config: afterConfig, now: NOW + 6 * 60_000 });
+  const jobs = listJobs({ dbPath: after.dbPath, config: afterConfig, operator: true, accounts: ["acct-1"] });
+  assert.equal(jobs[0].state, "uncertain");
+  assert.equal(claimCore({ dbPath: after.dbPath, config: afterConfig, workerId: "worker-2", accounts: ["acct-1"], now: NOW + 7 * 60_000 }).claimed, false);
+
+  const before = setup();
+  const beforeConfig = loaded(before);
+  enqueueBatchCore({ dbPath: before.dbPath, config: beforeConfig, scoutId: "scout-1", opportunities: [opportunity()] });
+  const killedBefore = await crashChild({ dbPath: before.dbPath, configPath: before.configPath, workerId: "worker-1", now: NOW, mode: "before" });
+  assert.equal(killedBefore.signal, "SIGKILL");
+  assert.equal(claimCore({ dbPath: before.dbPath, config: beforeConfig, workerId: "worker-2", accounts: ["acct-1"], now: NOW + 11 * 60_000 }).claimed, true);
 });

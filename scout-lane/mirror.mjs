@@ -1,5 +1,5 @@
-// Sanitized public summary representation for the trac-marketing/scout-jobs
-// sub-graph. Never authoritative and never contains private account identity.
+// Sanitized Working Memory draft summary for the trac-marketing/scout-jobs
+// sub-graph. Never authoritative, not finalized, not shared, and no private identity.
 import { createHash } from "node:crypto";
 import { canonicalPublicUrl, queryHasSecret } from "./jobs.mjs";
 
@@ -14,7 +14,7 @@ export function sanitizeSummaryTopic(value) {
   return topic;
 }
 
-export function mirrorPayload(job) {
+export function mirrorPayload(job, { subGraphName = "scout-jobs" } = {}) {
   const topic = sanitizeSummaryTopic(job.topic);
   const publicId = createHash("sha256").update(job.id).digest("hex").slice(0, 20);
   const subject = `${NS}job/${publicId}`;
@@ -42,5 +42,5 @@ export function mirrorPayload(job) {
     if (queryHasSecret(url)) throw new Error("summary source contains credential-like query material");
     quads.push(quad("https://schema.org/citation", url));
   }
-  return { name: `scout-job-${publicId}`, subject, subGraphName: "scout-jobs", quads };
+  return { name: `scout-job-${publicId}`, subject, subGraphName, quads };
 }

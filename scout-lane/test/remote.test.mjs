@@ -198,3 +198,54 @@ test("server registers job tools only behind both private operator paths", () =>
   assert.match(source, /if \(SCOUT_CONFIG_PATH && SCOUT_CAPABILITIES_PATH\)/);
   assert.doesNotMatch(source, /registerTool\("scout_job_/);
 });
+
+test("disabled lane and removed account stop context before any graph query", async () => {
+  const s = live();
+  grants(s.statusesPath, [
+    { id: "scout-main", tokenFamily: "fam-scout", roles: ["scout"], accounts: ["acct-1"] },
+    { id: "worker-main", tokenFamily: "fam-worker", roles: ["worker"], accounts: ["acct-1"] },
+  ]);
+  const scout = harness(s, { family: "fam-scout" }).tools;
+  const worker = harness(s, { family: "fam-worker" }).tools;
+  await scout.scout_job_enqueue.handler({ opportunities: [opportunity()] });
+  const claimed = JSON.parse((await worker.scout_job_claim.handler({})).content[0].text);
+  writeFileSync(s.configPath, JSON.stringify({ ...s.config, operatorOptIn: false }, null, 2));
+  const disabled = harness(s, { family: "fam-worker" });
+  await assert.rejects(() => disabled.tools.scout_job_context.handler({
+    jobId: claimed.job.id, fencingToken: claimed.fencingToken, revision: claimed.revision,
+  }), /disabled/);
+  assert.equal(disabled.calls.length, 0);
+  writeFileSync(s.configPath, JSON.stringify({ ...s.config, accounts: [] }, null, 2));
+  const removed = harness(s, { family: "fam-worker" });
+  await assert.rejects(() => removed.tools.scout_job_context.handler({
+    jobId: claimed.job.id, fencingToken: claimed.fencingToken, revision: claimed.revision,
+  }), /no longer operator-approved/);
+  assert.equal(removed.calls.length, 0);
+});
+
+test("accountless grants fail closed and operator resolution is account-scoped", async () => {
+  const s = live({ publish: { defaultMode: "preauthorized", preauthorized: true, allowedMethods: ["manual"] } });
+  grants(s.statusesPath, [
+    { id: "scout-main", tokenFamily: "fam-scout", roles: ["scout"], accounts: ["acct-1"] },
+    { id: "pub-main", tokenFamily: "fam-pub", roles: ["worker", "publisher"], accounts: ["acct-1"] },
+    { id: "operator-accountless", tokenFamily: "fam-op0", roles: ["operator"], accounts: [] },
+    { id: "operator-other", tokenFamily: "fam-op2", roles: ["operator"], accounts: ["acct-2"] },
+  ]);
+  const scout = harness(s, { family: "fam-scout" }).tools;
+  const publisher = harness(s, { family: "fam-pub" }).tools;
+  const accountless = harness(s, { family: "fam-op0" }).tools;
+  const other = harness(s, { family: "fam-op2" }).tools;
+  await assert.rejects(() => accountless.scout_jobs_list.handler({}), /no approved account/);
+  await scout.scout_job_enqueue.handler({ opportunities: [opportunity()] });
+  const claimed = JSON.parse((await publisher.scout_job_claim.handler({})).content[0].text);
+  const begun = JSON.parse((await publisher.scout_job_begin_submit.handler({
+    jobId: claimed.job.id, fencingToken: claimed.fencingToken, revision: claimed.revision,
+  })).content[0].text);
+  await publisher.scout_job_report.handler({
+    jobId: claimed.job.id, fencingToken: claimed.fencingToken, revision: begun.revision,
+    status: "uncertain", submitToken: begun.submitToken, reason: "ambiguous submit",
+  });
+  await assert.rejects(() => other.scout_job_resolve.handler({
+    jobId: claimed.job.id, resolution: "retry", reason: "not this account",
+  }), /outside this operator grant/);
+});

@@ -52,8 +52,9 @@ every call:
 }
 ```
 
-Roles are `scout`, `worker`, `publisher`, `operator`. A grant without an account is
-fail-closed. Deleting the grant or setting a valid `revokedAt` takes effect on the next
+Roles are `scout`, `worker`, `publisher`, `operator`. Every grant must list approved
+accounts; a grant without an account is fail-closed. Operator list/resolve is scoped to
+those accounts, and resolution checks the job account before changing state. Deleting the grant or setting a valid `revokedAt` takes effect on the next
 call. A caller cannot supply its own worker id, account, or role.
 
 ## Authoritative state and durable submit
@@ -91,8 +92,21 @@ reconciles with the public permalink.
 4. validate sources, URLs, accounts, actions, expiry, sensitivity and batch limits;
 5. enqueue through the same authoritative ledger.
 
-`createHttpModelAdapter` is the 9router/OpenAI-compatible adapter. It is exercised only
-with mocks pre-production. No live model was called.
+`createHttpModelAdapter` is the 9router/OpenAI-compatible adapter. It strips only the
+verified `9router/` provider prefix for the wire id, rejects remote plaintext endpoints,
+rejects redirects, bounds the response before JSON parsing, and uses a bounded token
+budget. It is exercised only with mocks pre-production. No live model was called.
+
+`scout-run.mjs` requires a private capability grant with a `tokenEnv` and approved
+accounts:
+
+```sh
+node scout-lane/scout-run.mjs --config <private> --db <private> \
+  --sources <public-urls.json> --capabilities <private> --grant <grant-id>
+```
+
+The grant token is read from `tokenEnv` or `DKG_SCOUT_GRANT_TOKEN`. Fetched URLs are the
+only citations accepted; fabricated citations and unfetched reply targets are rejected.
 
 ## DKG sub-graph adapter
 
@@ -103,11 +117,12 @@ The running node is `@origintrail-official/dkg` 10.0.23. The supported surface i
 - `subGraphName` on `/api/query` and knowledge-asset writes
 
 `scout-lane/subgraph.mjs` performs real create, write and readback calls (mocked in tests):
-create is idempotent, the summary is written with `finalize:false` and
-`alsoShareSwm:false`, then queried back. It is gated by `mode: live` and
+create is idempotent, the summary is written as a sub-graph **Working Memory draft** with
+`finalize:false` and `alsoShareSwm:false`, then queried back. It is not a public or
+shared summary and does not publish or finalize anything. It is gated by `mode: live` and
 `graph.mirrorEnabled`; both are off. No graph write was made.
 
-The public summary is sanitized: topic, action, status, timestamps, target/result URL and
+The draft summary is sanitized: topic, action, status, timestamps, target/result URL and
 at most three public citations. It excludes brief, account scope, worker identity, lease,
 fence, revision and submit token. URLs with credential-shaped query parameters and
 private/loopback/link-local IPv4/IPv6 hosts are refused.
@@ -135,7 +150,7 @@ injected availability check. No substitution or inference occurred.
 | `scout-lane/scout.mjs`, `scout-run.mjs` | bounded public-read/model/enqueue path |
 | `scout-lane/fetch-public.mjs` | DNS-pinned, redirect-checked, size-capped public fetch |
 | `scout-lane/subgraph.mjs` | create/write/readback adapter |
-| `scout-lane/mirror.mjs` | sanitized public summary payload |
+| `scout-lane/mirror.mjs` | sanitized Working Memory draft summary payload |
 | `scout-lane/cli.mjs` | local operator CLI; not the remote product path |
 | `scout-lane/*.example.json` | off-by-default config and empty capability grants |
 
@@ -163,7 +178,7 @@ read-only, network-isolated sandbox.
 4. Optionally create the `scout-jobs` sub-graph with the supported API and verify list.
 5. Install the staged scout agent (placeholder model only until step 2).
 6. Run one dry-run cycle, inspect ledger, then set `mode: "live"`.
-7. Keep `mirrorEnabled: false` until a separate public-summary review.
+7. Keep `mirrorEnabled: false` until a separate summary-draft review.
 
 ## Rollback
 
