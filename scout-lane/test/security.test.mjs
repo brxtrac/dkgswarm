@@ -43,6 +43,11 @@ test("bounded fetch caps size, redirects and response status", async () => {
     lookupImpl, requestImpl: async () => ({ statusCode: 200, headers: { "content-type": "text/plain" }, body: "hello" }),
   });
   assert.equal(ok.body, "hello");
+  const scalarLookup = await fetchPublicSource("https://example.com/x", {
+    lookupImpl: async () => "93.184.216.34",
+    requestImpl: async () => ({ statusCode: 200, headers: {}, body: "scalar" }),
+  });
+  assert.equal(scalarLookup.body, "scalar");
 });
 
 test("public summary omits private fields and refuses secret query material", () => {
