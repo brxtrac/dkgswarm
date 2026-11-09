@@ -26,6 +26,7 @@ import { verifyPolicyBindings } from "./policy-integrity.mjs";
 import { assertReadSparql } from "./query-guard.mjs";
 import { pushSubjectQuery, pushMetadataQuery, parsePushPage, pushBindings, collectivePushPageSize } from "./collective-pushes.mjs";
 import { postingContextSearchQuery, postingContextMetaQuery, rankPostingContext, sanitizeTopic } from "./posting-context.mjs";
+import { createScoutTools } from "./scout-lane/remote.mjs";
 import {
   SOCIAL_WORKER_INSTRUCTIONS,
   SOCIAL_WORKER_PROFILE,
@@ -44,6 +45,9 @@ const PORT = Number(process.env.DKG_MCP_PORT || 27131);
 const HOST = process.env.DKG_MCP_HOST || "127.0.0.1";
 const PUBLIC_URL = (process.env.DKG_MCP_PUBLIC_URL || "https://www.dkgswarm.com").replace(/\/$/, "");
 const NETWORK_STATS_URL = process.env.DKG_NETWORK_STATS_URL || "http://172.18.0.1:27132/api/swarm/network";
+const SCOUT_CONFIG_PATH = process.env.DKG_MCP_SCOUT_CONFIG || "";
+const SCOUT_CAPABILITIES_PATH = process.env.DKG_MCP_SCOUT_CAPABILITIES || "";
+const SCOUT_DB_PATH = process.env.DKG_MCP_SCOUT_DB || "/root/dkg-public-mcp/data/scout-lane.sqlite";
 const ALLOWED_HOSTS = (process.env.DKG_MCP_ALLOWED_HOSTS || "127.0.0.1,localhost,www.dkgswarm.com,dkgswarm.com")
   .split(",")
   .map((h) => h.trim())
@@ -135,6 +139,31 @@ function getServer() {
   );
   const registerTool = (name, definition, handler) =>
     server.registerTool(name, definition, trackToolOutcome(authStore, handler));
+
+  // Job dispatch is absent unless an operator supplies both private paths.
+  // Existing dkg:read/dkg:write alone never grants job authority.
+  if (SCOUT_CONFIG_PATH && SCOUT_CAPABILITIES_PATH) {
+    const query = async (sparql) => {
+      const response = await dkgFetch("/api/query", {
+        method: "POST",
+        body: { sparql, contextGraphId: GRAPH_ID, view: "shared-working-memory" },
+        timeoutMs: 10000,
+      });
+      const bindings = response?.result?.bindings || response?.bindings || [];
+      if (!Array.isArray(bindings)) throw new Error("Invalid scout context response");
+      return bindings;
+    };
+    for (const tool of createScoutTools({
+      getAuth: () => authStore.getStore(),
+      query,
+      json,
+      configPath: SCOUT_CONFIG_PATH,
+      capabilitiesPath: SCOUT_CAPABILITIES_PATH,
+      dbPath: SCOUT_DB_PATH,
+    })) {
+      registerTool(tool.name, tool.definition, tool.handler);
+    }
+  }
 
   server.registerResource(
     "social-worker-v1",

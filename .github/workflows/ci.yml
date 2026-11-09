@@ -17,6 +17,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: npm run test:scout
+      - run: for f in scout-lane/*.mjs scout-lane/test/*.mjs; do node --check "$f"; done
       - run: node --check server.mjs
       - run: node --check publish-policy.mjs
       - run: npm ci

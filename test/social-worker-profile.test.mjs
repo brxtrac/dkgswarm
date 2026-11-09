@@ -17,7 +17,8 @@ test("social worker profile is versioned and least privilege", () => {
   assert.match(SOCIAL_WORKER_PROFILE.trustBoundary, /untrusted evidence/);
   assert.equal(SOCIAL_WORKER_PROFILE.tasks.freeTextCommandsAllowed, false);
   assert.ok(SOCIAL_WORKER_PROFILE.socialConnector.approvalRequired.includes("draft"));
-  assert.equal(SOCIAL_WORKER_PROFILE.oauth.taskDispatchStatus, "not-implemented");
+  assert.equal(SOCIAL_WORKER_PROFILE.oauth.taskDispatchStatus, "opt-in-capability");
+  assert.match(SOCIAL_WORKER_PROFILE.oauth.currentServerScopes.taskDispatch, /capability grant/);
 });
 
 test("server instructions advertise profile and trust boundary", () => {

@@ -7,44 +7,38 @@ import { fileURLToPath } from "node:url";
 
 const run = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
-
-export const TOKENS = {
-  scout: "test-scout-token",
-  worker: "test-worker-token",
-  publisher: "test-publisher-token",
-  operator: "test-operator-token",
-};
+const NOW = Date.now();
 
 export function setup(overrides = {}) {
   const dir = mkdtempSync(join(tmpdir(), "scout-lane-test-"));
   const configPath = join(dir, "scout-lane.json");
   const dbPath = join(dir, "jobs.sqlite");
-  process.env.TEST_SCOUT_TOKEN = TOKENS.scout;
-  process.env.TEST_WORKER_TOKEN = TOKENS.worker;
-  process.env.TEST_PUBLISHER_TOKEN = TOKENS.publisher;
-  process.env.TEST_OPERATOR_TOKEN = TOKENS.operator;
+  const statusesPath = join(dir, "capabilities.json");
   const config = {
     mode: "dry-run",
     operatorOptIn: true,
     scoutModel: null,
+    approvedModels: ["9router/cx/gpt-6.1-sol"],
+    availableModels: ["9router/cx/gpt-6.1-sol"],
+    availableModelsVerifiedAt: new Date(NOW).toISOString(),
     graph: { contextGraphId: "trac-marketing", subGraphName: "scout-jobs", view: "shared-working-memory", mirrorEnabled: false },
     publish: { defaultMode: "draft", preauthorized: false, allowedMethods: ["manual"] },
     accounts: ["acct-1"],
-    limits: { leaseMinutes: 10, jobTtlMinutes: 120, failureCooldownMinutes: 360, maxClaimsPerDay: 10, maxPerAccountPerDay: 3, maxBriefsPerRun: 5 },
-    roles: {
-      scouts: ["scout-1"], workers: ["worker-1", "worker-2"],
-      publishers: ["publisher-1"], operators: ["operator-1"],
-    },
-    tokens: {
-      scouts: { "scout-1": { env: "TEST_SCOUT_TOKEN" } },
-      workers: { "worker-1": { env: "TEST_WORKER_TOKEN" }, "worker-2": { env: "TEST_WORKER_TOKEN" } },
-      publishers: { "publisher-1": { env: "TEST_PUBLISHER_TOKEN" } },
-      operators: { "operator-1": { env: "TEST_OPERATOR_TOKEN" } },
-    },
+    limits: { leaseMinutes: 10, jobTtlMinutes: 120, maxJobTtlMinutes: 1440, submitTimeoutMinutes: 5, failureCooldownMinutes: 360, maxClaimsPerDay: 10, maxBriefsPerDay: 20, maxBriefsPerRun: 5, maxPerAccountPerDay: 3 },
+    roles: { scouts: ["scout-1"], workers: ["worker-1", "worker-2"], publishers: ["publisher-1"], operators: ["operator-1"] },
+    tokens: {},
     ...overrides,
   };
   writeFileSync(configPath, JSON.stringify(config, null, 2));
-  return { dir, configPath, dbPath, config };
+  return { dir, configPath, dbPath, statusesPath, config, now: NOW };
+}
+
+export function live(overrides = {}) {
+  return setup({
+    mode: "live",
+    scoutModel: "9router/cx/gpt-6.1-sol",
+    ...overrides,
+  });
 }
 
 export function opportunity(overrides = {}) {
@@ -55,17 +49,15 @@ export function opportunity(overrides = {}) {
     topic: "OriginTrail DKG public documentation",
     brief: "Write a short sourced post about the public DKG documentation. No price or adoption claims.",
     relevance: 0.8,
-    sources: [{ url: "https://fixtures.dkgswarm.invalid/docs/one" }],
+    sources: [{ url: "https://example.com/docs/one" }],
     ...overrides,
   };
 }
 
-export async function raceChild({ dbPath, configPath, workerId, now }) {
+export async function raceChild({ dbPath, configPath, workerId, accounts, now, mode = "claim" }) {
   const script = join(here, "race-child.mjs");
-  const { stdout } = await run(process.execPath, [script, dbPath, configPath, workerId, String(now)], {
-    env: { ...process.env, TEST_WORKER_TOKEN: TOKENS.worker },
-    timeout: 20_000,
-  });
+  const { stdout } = await run(process.execPath, [script, dbPath, configPath, workerId, String(now), JSON.stringify(accounts), mode], { timeout: 20_000 });
   return JSON.parse(stdout);
 }
 
+export { NOW };

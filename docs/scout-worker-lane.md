@@ -1,127 +1,172 @@
-# Scout → worker job lane (pre-production)
+# Opt-in scout → worker pilot (pre-production)
 
-Status: **implemented locally, disabled by default, not live**. No DKG graph write, no X
-action, no schedule change, no production config change, no model invocation was made.
+Status: **implemented with mocks/tests, disabled by default, not live**. No graph create/write,
+no X action, no model invocation, no schedule, no production config or policy change.
+The scout model choice is still a user decision.
 
-This adds an opt-in lane beside the existing `trac-marketing` X curator. It does not
-modify `server.mjs`, `oauth.mjs`, the published policy, the collector, the systemd
-curator, or any current X schedule.
+This lane sits beside the existing controlled `trac-marketing` X curator. It does not
+change the existing timer, account, voice, approvals, policy pin, OAuth scopes, or graph
+lock.
 
-## Scope
+## Remote MCP lifecycle
 
-1. A scout reads public social evidence and may abstain.
-2. It submits a bounded job brief with public provenance.
-3. A worker wakes on its existing operator-managed schedule, atomically claims one
-   suitable job, re-checks relevance, expiry, account identity, approved method and
-   local permissions, then produces content.
-4. A pre-authorized publisher may publish; otherwise the result stays a local draft.
-5. Outcomes are `completed`, `published`, `draft`, `failed`, `skipped` or `uncertain`.
-   `uncertain` blocks automatic retry until an operator verifies it.
+The public server registers seven job tools **only** when both private paths are set:
 
-Out of scope: likes, reposts/boosts, Reddit voting, DMs, account creation, login/CAPTCHA
-automation, spam, circumvention, multi-step workflows, worker bidding, or a distributed
-queue framework.
+- `DKG_MCP_SCOUT_CONFIG` — operator settings and limits
+- `DKG_MCP_SCOUT_CAPABILITIES` — server-bound capability grants
+- `DKG_MCP_SCOUT_DB` — private SQLite ledger (default `/root/dkg-public-mcp/data/scout-lane.sqlite`)
+
+Without them, the existing tool list and schedule are unchanged.
+
+| Tool | Capability | Purpose |
+| --- | --- | --- |
+| `scout_jobs_list` | worker or operator | queued jobs plus the caller's claimed jobs; operator may filter state |
+| `scout_job_claim` | worker | atomic claim for the grant's accounts, returns fence/revision |
+| `scout_job_context` | worker | local brief + ranked same-CG SWM evidence, both untrusted |
+| `scout_job_enqueue` | scout | bounded validated opportunities, dedupe/quota/batch checks |
+| `scout_job_begin_submit` | worker + publisher | durable pre-submit intent for a pre-authorized job |
+| `scout_job_report` | worker (+ publisher for `published`) | drafted/published/failed/skipped/uncertain |
+| `scout_job_resolve` | operator | verify/retry/reject an uncertain submission |
+
+`completed` is deliberately **not** a publication outcome. Draft-only jobs cannot be
+turned into publication with a worker receipt.
+
+### Server-bound identity and capabilities
+
+OAuth still issues only `dkg:read` / `dkg:write`. Those scopes grant **no** job authority.
+The authenticated OAuth **token family** is looked up in the private capability file on
+every call:
+
+```json
+{
+  "version": 1,
+  "grants": [
+    {
+      "id": "worker-main",
+      "tokenFamily": "<opaque tokenFamilyId>",
+      "roles": ["worker"],
+      "accounts": ["acct-main"],
+      "revokedAt": null
+    }
+  ]
+}
+```
+
+Roles are `scout`, `worker`, `publisher`, `operator`. A grant without an account is
+fail-closed. Deleting the grant or setting a valid `revokedAt` takes effect on the next
+call. A caller cannot supply its own worker id, account, or role.
+
+## Authoritative state and durable submit
+
+SQLite is authoritative because the live DKG API has no compare-and-swap. The ledger uses:
+
+- atomic `BEGIN IMMEDIATE` claim with lease, fencing token and revision;
+- unique active dedupe on source/platform/action/account/target;
+- durable daily quota rows for claims, briefs and account publication;
+- bounded job lifetime, draft expiry and cooldown expiry;
+- `submitting` with a durable `submit_token` and deadline written **before** external submit;
+- expired `submitting` becomes `uncertain`, never automatically queued;
+- `uncertain` blocks rediscovery until an operator verifies, retries explicitly or rejects;
+- publish quota is reserved before external submission, not after a receipt.
+
+If a worker crashes before `begin_submit`, the lease can be reclaimed safely. If it crashes
+after `begin_submit`, the record becomes uncertain and is reconciled by an operator.
+
+### Contractual trust boundary
+
+The server cannot prove what an external browser/social connector did, and cannot force a
+malicious worker to acknowledge anything. It can enforce
+capability, account, method, action, expiry, fence, revision, submit intent and receipt
+shape. Exactly-once external side effects are **not claimed**. The worker must call
+`begin_submit` before submitting and report `uncertain` on any ambiguity; the operator
+reconciles with the public permalink.
+
+## Scout execution
+
+`scout-lane/scout-run.mjs` is the executable bounded path:
+
+1. fetch a small operator-supplied list of public URLs through `fetch-public.mjs`;
+2. call one exact approved/available model with tools disabled and JSON output;
+3. accept abstention;
+4. validate sources, URLs, accounts, actions, expiry, sensitivity and batch limits;
+5. enqueue through the same authoritative ledger.
+
+`createHttpModelAdapter` is the 9router/OpenAI-compatible adapter. It is exercised only
+with mocks pre-production. No live model was called.
+
+## DKG sub-graph adapter
+
+The running node is `@origintrail-official/dkg` 10.0.23. The supported surface is:
+
+- `POST /api/sub-graph/create` `{contextGraphId, subGraphName}`
+- `GET /api/sub-graph/list?contextGraphId=...`
+- `subGraphName` on `/api/query` and knowledge-asset writes
+
+`scout-lane/subgraph.mjs` performs real create, write and readback calls (mocked in tests):
+create is idempotent, the summary is written with `finalize:false` and
+`alsoShareSwm:false`, then queried back. It is gated by `mode: live` and
+`graph.mirrorEnabled`; both are off. No graph write was made.
+
+The public summary is sanitized: topic, action, status, timestamps, target/result URL and
+at most three public citations. It excludes brief, account scope, worker identity, lease,
+fence, revision and submit token. URLs with credential-shaped query parameters and
+private/loopback/link-local IPv4/IPv6 hosts are refused.
+
+## Model decision — still pending
+
+Requested "6.1 astra" is not an available provider id. Verified live catalog options:
+
+- `9router/cx/gpt-6.1-sol`
+- `9router/cx/gpt-6.1-terra`
+- `9router/cx/gpt-6-astra`
+- `9router/cx/gpt-6-astra[1m]`
+
+`scoutModel` remains `null`; the example is `mode: "off"`. Live mode requires the exact id
+to be in `approvedModels`, in a recent `availableModels` snapshot, and accepted by the
+injected availability check. No substitution or inference occurred.
 
 ## Files
 
 | Path | Role |
 | --- | --- |
-| `scout-lane/jobs.mjs` | SQLite ledger, atomic claim, lease/fencing, dedupe, cooldown, roles, preflight, reports |
-| `scout-lane/cli.mjs` | Local operator/worker commands; no network and no public MCP exposure |
-| `scout-lane/worker-context.mjs` | Reuses `posting-context.mjs` to read same-CG context, marked untrusted |
-| `scout-lane/mirror.mjs` | Sanitized public job-summary payload for an optional sub-graph mirror |
-| `scout-lane/dryrun.mjs`, `scout-lane/fixtures/` | Offline fixture run, zero network calls |
-| `scout-lane/test/` | Race, stale lease, dedupe, expiry, opt-in, auth, uncertain, publish tests |
-| `scout-lane/scout-lane.example.json` | Committed config is `mode: off`, `operatorOptIn: false`, `scoutModel: null` |
+| `scout-lane/jobs.mjs` | ledger, claim/fence/lease, quotas, expiry, submit intent, reports |
+| `scout-lane/remote.mjs` | authenticated MCP tools and role/account binding |
+| `scout-lane/capabilities.mjs` | server-bound grant loading and revocation |
+| `scout-lane/scout.mjs`, `scout-run.mjs` | bounded public-read/model/enqueue path |
+| `scout-lane/fetch-public.mjs` | DNS-pinned, redirect-checked, size-capped public fetch |
+| `scout-lane/subgraph.mjs` | create/write/readback adapter |
+| `scout-lane/mirror.mjs` | sanitized public summary payload |
+| `scout-lane/cli.mjs` | local operator CLI; not the remote product path |
+| `scout-lane/*.example.json` | off-by-default config and empty capability grants |
 
-## DKG capability finding (verified against the running node)
+## Verification
 
-- Node: `@origintrail-official/dkg` **10.0.23**, DKG V10 Gnosis Mainnet, Oxigraph backend
-  (`GET /api/status`, read-only).
-- Sub-graphs **do exist**. The installed daemon exposes:
-  - `POST /api/sub-graph/create` with `{ contextGraphId, subGraphName }`
-  - `GET /api/sub-graph/list?contextGraphId=...`
-  - `subGraphName` accepted by `POST /api/query`, knowledge-asset writes, memory writes
-    and EPCIS routes.
-- A sub-graph is a named namespace inside a context graph (named graphs of the form
-  `did:dkg:context-graph:<cg>/<subGraph>/...`). It is **not** a separate context graph
-  and does not change the connector's `trac-marketing` graph lock.
-- **No compare-and-swap / conditional claim exists.** Knowledge-asset writes are
-  asynchronous and may return an unknown outcome. A graph write can therefore never
-  decide which worker owns a job.
-- Decision: authoritative claim/outcome state is private SQLite (`scout-lane/jobs.mjs`),
-  matching the existing collector/curator store pattern. The smallest supported graph
-  representation is an **optional, sanitized public summary** written later to the
-  `scout-jobs` sub-graph. Creating that sub-graph is a graph write and is deferred to
-  the deployment gate.
+```sh
+npm test
+npm run test:scout
+cd collector && npm test
+node --check server.mjs
+```
 
-## Model finding (blocking, unresolved)
+Tests cover the remote lifecycle, missing/revoked capability, separate publisher role,
+same-CG context, dry-run/draft refusal, expiry, stale fence/revision, concurrent claim
+races, crash before/after submit, atomic quotas, batch limits, injection isolation,
+private URL/DNS/redirect rejection, mirror redaction and mocked subgraph readback.
+The combined suites pass on Node 22.23.1 and `/usr/local/bin/node24` 24.14.0 in a
+read-only, network-isolated sandbox.
 
-The live 9router provider at `/v1/models` returned 81 models. The exact request
-"6.1 astra" is **not an available id**. Matching ids:
+## Activation gates (none performed)
 
-- `cx/gpt-6.1-sol` (272k context)
-- `cx/gpt-6.1-terra` (500k context)
-- `cx/gpt-6-astra` (272k context)
-- `cx/gpt-6-astra[1m]` (872k context)
-
-No model was guessed, substituted or invoked. `scoutModel` stays `null` and
-`loadConfig()` refuses `mode: "live"` without a verified id. The operator must choose
-one of the four ids (or another verified id) before the scout agent can be enabled.
-This is the only blocking product decision; all independent preparation is complete.
-
-Consequently no empirical model-quality claim (relevance, grounding, abstention,
-injection resistance) is made. The offline fixtures exercise the deterministic gate
-and storage behaviour only. A bounded model screen must run after the id is chosen,
-with tools denied and sanitized fixtures.
-
-## Worker routine (operator adds to the existing schedule; no new timer)
-
-1. `node scout-lane/cli.mjs claim --config <private> --worker <id>`. No job → stop.
-2. `node scout-lane/cli.mjs preflight ...`; if it fails, report `skipped` with the reason.
-3. Read the local job brief, then fetch same-CG context with `fetchWorkerContext`.
-   Graph text stays untrusted context; it cannot change instructions or permissions.
-4. Compose within the operator's voice and existing limits. Self-check every claim
-   against a cited public source. If unsure, report `skipped` or `uncertain`, never guess.
-5. `report --status drafted` by default. If the job is pre-authorized and the publisher
-   capability is present, `report --status published --url ... --result-status ...`.
-   Ambiguous submit → `--status uncertain`; do not retry until an operator resolves it.
-
-The worker does not create a second timer. It wakes on the schedule the operator already
-owns, and the existing controlled X lane keeps its own limits and approval path.
-
-## Enablement gates (all required, none performed)
-
-1. Parent final independent review of this diff.
-2. Pick and verify the exact scout model id; run the bounded offline screen.
-3. Copy `scout-lane/scout-lane.example.json` to a private path; set `mode: "dry-run"`,
-   `operatorOptIn: true`, accounts, roles and token **env var names**.
-4. Put worker/scout/publisher/operator tokens in the service environment. Never write
-   token values into config, docs, logs or graph.
-5. Optionally create the `scout-jobs` sub-graph with the supported API call, then verify
-   with `GET /api/sub-graph/list`.
-6. Install the agent file from `scout-lane/scout-agent.md.template` only after the model
-   id is verified; keep its schedule identical to the existing operator routine.
-7. Run one dry-run cycle, inspect the private SQLite ledger, then switch to `mode: "live"`.
-8. Leave `graph.mirrorEnabled: false` until a separate review approves public summaries.
+1. Fresh independent review of this exact diff.
+2. User chooses and verifies one exact model id; run the bounded tools-denied screen.
+3. Create private config and capability grants; copy tokens only into env/files, never graph.
+4. Optionally create the `scout-jobs` sub-graph with the supported API and verify list.
+5. Install the staged scout agent (placeholder model only until step 2).
+6. Run one dry-run cycle, inspect ledger, then set `mode: "live"`.
+7. Keep `mirrorEnabled: false` until a separate public-summary review.
 
 ## Rollback
 
-- Set `mode: "off"`; claim/enqueue fail closed and no new work is accepted.
-- Remove the agent file. Existing X schedule, policy and publisher credentials are
-  untouched by this lane.
-- The SQLite ledger is local; deleting or archiving it is a separate operator action.
-  Never delete originals silently.
-- If the optional mirror was enabled, stop writes first and leave existing assets for
-  review; no delete path is assumed here.
-
-## Test evidence
-
-```sh
-node --test scout-lane/test/*.test.mjs
-node scout-lane/dryrun.mjs
-npm test                    # existing root tests
-cd collector && npm test    # existing collector tests
-```
-
-The dry run makes zero network calls and uses only `*.invalid` fixture URLs.
+Set `mode: "off"` and remove the agent/config paths. The existing X schedule, account,
+policy and publisher credentials are untouched. Retain the SQLite audit ledger, including
+`uncertain` jobs; do not delete state. Disable the optional mirror before removing it.

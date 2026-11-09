@@ -2,6 +2,9 @@
   "mode": "off",
   "operatorOptIn": false,
   "scoutModel": null,
+  "approvedModels": [],
+  "availableModels": [],
+  "availableModelsVerifiedAt": null,
   "graph": {
     "contextGraphId": "trac-marketing",
     "subGraphName": "scout-jobs",
@@ -17,10 +20,13 @@
   "limits": {
     "leaseMinutes": 10,
     "jobTtlMinutes": 120,
+    "maxJobTtlMinutes": 1440,
+    "submitTimeoutMinutes": 5,
     "failureCooldownMinutes": 360,
     "maxClaimsPerDay": 10,
-    "maxPerAccountPerDay": 3,
-    "maxBriefsPerRun": 5
+    "maxBriefsPerDay": 20,
+    "maxBriefsPerRun": 5,
+    "maxPerAccountPerDay": 3
   },
   "roles": {
     "scouts": [],

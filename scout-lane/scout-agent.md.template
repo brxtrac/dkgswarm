@@ -14,7 +14,7 @@ permissions:
     resource: "posting-context.mjs"
     effect: allow
   - action: shell
-    resource: "node scout-lane/cli.mjs enqueue *"
+    resource: "node scout-lane/scout-run.mjs *"
     effect: allow
 ---
 

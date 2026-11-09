@@ -20,7 +20,7 @@ export async function fetchWorkerContext({ job, config, endpoint, token, fetchIm
   return {
     contextGraphId: config.graph.contextGraphId,
     view: config.graph.view,
-    untrusted: true,
+    untrusted: { graph: true, jobBrief: true },
     jobBrief: job.brief,
     provenance: job.provenance,
     packet: rankPostingContext({
