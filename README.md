@@ -39,40 +39,54 @@ DKGSwarm is now an OpenDKG project: future development happens under the [OpenDK
 
 | Path | Role |
 | --- | --- |
-| [`server.mjs`](server.mjs), [`oauth.mjs`](oauth.mjs), [`oauth-provider.mjs`](oauth-provider.mjs) | Remote MCP, OAuth, reader/writer boundaries |
+| [`server.mjs`](server.mjs), [`oauth.mjs`](oauth.mjs), [`oauth-provider.mjs`](oauth-provider.mjs), [`mcp-cors.mjs`](mcp-cors.mjs) | Remote MCP, OAuth, reader/writer boundaries, scoped browser origins |
 | [`writer-invitations.mjs`](writer-invitations.mjs), [`policy-integrity.mjs`](policy-integrity.mjs), [`publish-policy.mjs`](publish-policy.mjs) | Writer invitation expiry, owner-policy digest verification, guarded publication |
-| [`policy-v18.json`](policy-v18.json), [`policy-current.example.json`](policy-current.example.json) | Public sample policy and pointer format; not the live private pointer |
-| [`collector/`](collector/) | Scheduled observations, curator review, retired webhook routes |
+| [`collector/`](collector/) | Scheduled observations, curator review, health check, retired webhook routes |
+| [`scheduler/`](scheduler/) | Twice-daily curator scheduler and its non-secret agent-policy template |
+| [`policy-v18.json`](policy-v18.json), [`policy-v19.json`](policy-v19.json), [`policy-current.example.json`](policy-current.example.json) | Public policy snapshots and pointer format; not the live private pointer |
+| [`deploy/systemd/`](deploy/systemd/) | Example service and timer units; not installed by this repository |
 | [`site/`](site/) | Static public pages and memory garden |
-| [`docs/`](docs/) | Source-of-record boundaries and nonactivating OpenDKG/platform drafts |
+| [`docs/`](docs/) | Source-of-record boundaries, deployment mapping, and nonactivating OpenDKG/platform drafts |
 | [`test/`](test/), [`collector/test/`](collector/test/) | Behavior tests |
 
 ### Source of record and deferred dependencies
 
-This checkout is the canonical source for the reconciled application files listed here; it is not a complete production image. Production service units, proxy routing, private environment, OAuth/writer stores, collector databases, node modules, and generated assets stay outside it. Legacy game files and service, stats/research pages and their generators, generated `social-previews`, research fonts, and the live roadmap are deferred and are not generated here. Some `site/` links to those live-only routes remain an external deployment dependency, not a claim that the route exists in this checkout. Absolute deployment defaults are documented in code and must be overridden for local tests; tests use temporary directories and mocked network, never live credentials or private data. Collector network statistics import an optional host-provided `viem` install for on-chain APR reads; it is not a packaged dependency, so that path requires an explicit deployment integration and is covered only by injected test readers.
+This checkout is the canonical source for the reconciled application files listed here; it is not a complete production image. Installed service units, proxy routing, private environment, OAuth/writer stores, collector databases, scheduler state, node modules, and generated assets stay outside it; [`docs/source-coverage.md`](docs/source-coverage.md) records every component included or excluded and why. Legacy game files and service, stats/research pages and their generators, generated `social-previews`, research fonts, and the live roadmap are deferred and are not generated here. Some `site/` links to those live-only routes remain an external deployment dependency, not a claim that the route exists in this checkout. Absolute deployment defaults are documented in code and must be overridden for local tests; tests use temporary directories and mocked network, never live credentials or private data. Collector network statistics load `viem` from the collector runtime, or from `TRAC_VIEM_MODULE` when an operator supplies an existing package or file path; it is not a packaged dependency, so that path requires an explicit deployment integration, is checked by the import validator, and its APR behavior is covered by injected test readers.
 
-The policy sample in this repository is v18 and is not a claim about the live pointer. Read the current owner policy through `get_swarm_policy`; never copy a private live pointer into source.
+The policy snapshots in this repository are v18 and v19 and are not a claim about the live pointer. Read the current owner policy through `get_swarm_policy`; never copy a private live pointer into source.
 
-### Licensing and release blockers
+### Licensing and known limits
 
 This project's owner-selected license is MIT. The repository-root [`LICENSE`](LICENSE) carries the owner's MIT notice (`Copyright (c) 2025 BRX`), and the root and collector package metadata declare `MIT`. The earlier `ISC` declaration is retained as context for the merged PR #1 contribution rather than silently discarded: see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for the PR #1 source, observed git attribution, affected files, and the official ISC terms. The MIT `LICENSE` does not relicense that external contribution, and git attribution is not a verified copyright-ownership statement. Bundled third-party names, logos, and media remain subject to their own terms. OpenDKG's adopted governance requires each organization-owned repository to carry its own `LICENSE` and to disclose a non-default license before accepting contributions; this repository's MIT license is that disclosure, and OpenDKG's `tracabot` repository is also MIT. No Apache-2.0 default is applied retroactively.
 
-The OAuth default redirect-host allowlist remains `grok.com,x.ai`. The built-in client also lists `cursor.com` callbacks, so Cursor OAuth is refused by this default. That mismatch is a known release blocker: an operator can set `DKG_MCP_OAUTH_REDIRECT_HOSTS` for a deployment, but source reconciliation does not broaden the default permission.
+OAuth defaults accept dynamic registration for these first-party callback hosts: `grok.com`, `x.ai`, `claude.ai`, `claude.com`, `chatgpt.com`, `chat.openai.com`, `cursor.com`, and `www.cursor.com`, plus RFC 8252 loopback redirects on any port. Hosts match exactly; a subdomain must be listed explicitly. An operator can replace the list with `DKG_MCP_OAUTH_REDIRECT_HOSTS`. Exact registered redirect URIs are still required; no wildcard callback is accepted. Browser origins allowed to call `/mcp` are configured separately with `DKG_MCP_CORS_ORIGINS` (defaults to the same first-party apps plus loopback); requests with an unlisted `Origin` are rejected with 403.
+
+The authorization server supports RFC 8414 metadata and RFC 7591 dynamic registration only. Client ID Metadata Documents and a token revocation endpoint are not implemented, so clients must fall back to DCR and discard tokens locally. It serves Streamable HTTP at `/mcp`; the retired HTTP+SSE transport is not provided. See [deployment and source mapping](docs/deployment.md) for the pull/copy/restart procedure and [OAuth interoperability](#oauth-interoperability) for what has actually been tested.
 
 Existing undated or malformed writer invitation rows fail closed. Dated legacy codes expire seven days after `createdAt` rather than remaining permanent; reissue rather than editing historical rows.
 
 
 ### Run source locally
 
-Node.js with `node:sqlite` support required. In repo root run `npm ci && npm test`; in `collector/` run `npm ci && npm test`. For server startup, use private environment settings from [`.env.example`](.env.example), DKG node/API access, and private copy of [`policy-current.example.json`](policy-current.example.json). Verify sample digest matches graph policy before use. `node server.mjs` starts MCP; deployment defaults include operator-specific absolute paths and need adaptation for other machines. `publish-policy.mjs` verifies newly shared policy before advancing local pin. Static files in `site/` need web-server routing for `/join`, `/contexts`, and `/memory`.
+Node.js with `node:sqlite` support required. In repo root run `npm ci && npm test`; in `collector/` run `npm ci && npm test`. For server startup, use private environment settings from [`.env.example`](.env.example), DKG node/API access, and private copy of [`policy-current.example.json`](policy-current.example.json). Verify sample digest matches graph policy before use. `node server.mjs` starts MCP; deployment defaults include operator-specific absolute paths and need adaptation for other machines. [Example systemd units](deploy/systemd/) show a non-root layout with state under `/var/lib/dkg`; they are not installed automatically. `publish-policy.mjs` verifies newly shared policy before advancing local pin. Static files in `site/` need web-server routing for `/join`, `/contexts`, and `/memory`.
 
 Use Node.js 22.13+ (or newer supported release). CI runs root and collector tests on Node.js 22 and 24. Public `query_graph` accepts a single triple-pattern `ASK` or `SELECT` with a fixed predicate, `LIMIT 1..100` for `SELECT`, and at most `OFFSET 10000`; per-installation and global concurrency budgets apply. Policy publication may safely retry after a confirmed partial share: exact matching graph content is verified before local pointer advances.
 
-This is inspectable application source, not complete server image: production proxy rules, systemd units, local DKG node, credentials, OAuth store, collector data, and operator records are excluded. `collector/` release copy reads `WATCH_X_PUBLIC_BEARER` from environment; no live credential shipped.
+This is inspectable application source, not complete server image: production proxy rules, installed systemd units, local DKG node, credentials, OAuth store, collector data, and operator records are excluded. `collector/` release copy reads `WATCH_X_PUBLIC_BEARER` from environment; no live credential shipped.
 
-### Check MCP compatibility
+### OAuth interoperability
 
-Authorized reader client should receive `initialize`, nonempty `tools/list`, `resources/list`, and `prompts/list`, then successfully call `graph_info`. On **2026-09-27**, existing reader-token check returned 9 tools, 1 resource, 1 prompt, and working `graph_info`. This does **not** establish compatibility with Codex v0.155.1 or a fresh dynamic OAuth client; affected user still needs to retest. Report client version and HTTP status, never bearer token or raw credentials.
+Discovery and challenge paths served by the source:
+
+- `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/mcp` (RFC 9728)
+- `/.well-known/oauth-authorization-server` (RFC 8414) with `S256`, `authorization_code`, `refresh_token`, and `registration_endpoint`
+- 401 responses carry `WWW-Authenticate: Bearer` with `resource_metadata` and `scope="dkg:read"`
+- `/register` (RFC 7591 DCR), `/authorize` (authorization code + PKCE), `/token`
+- `POST /mcp` Streamable HTTP; `GET`/`DELETE /mcp` return 405; CORS preflight returns 204 for allowed origins
+
+Compatibility and negative tests cover discovery, redirect-host boundaries, PKCE exchange, refresh narrowing, resource binding, unknown scopes, CORS preflight, and rejection of unlisted browser origins. The live deployment was probed read-only on **2026-11-13** for metadata, 401 challenge, and discovery paths. No official client (Claude, ChatGPT, Cursor, Grok, VS Code, Codex) was run end-to-end against the deployed server in this change; connect those clients in a staging or operator-approved window before claiming client-specific support. Real-client checks must report client version, HTTP status, and the failing step, never a bearer token or writer code.
+
+For an authorized reader, the protocol check remains: `initialize`, nonempty `tools/list`, `resources/list`, `prompts/list`, then `graph_info`. On **2026-09-27**, an existing reader token returned 9 tools, 1 resource, 1 prompt, and working `graph_info`.
 
 ## OpenDKG community layer
 

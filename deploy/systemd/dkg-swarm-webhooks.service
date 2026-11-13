@@ -1,0 +1,24 @@
+[Unit]
+# Example only. Adapt paths and service account, then test before enabling.
+Description=DKG Swarm collector and curator
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dkg
+Group=dkg
+WorkingDirectory=/srv/dkg/webhooks
+EnvironmentFile=/etc/dkg/webhooks.env
+ExecStart=/usr/bin/node /srv/dkg/webhooks/server.mjs
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dkg
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+# Example only. Adapt paths and schedule, then test before enabling.
+Description=Review TRAC marketing drafts twice daily
+
+[Timer]
+OnCalendar=*-*-* 09,21:20:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=trac-marketing-curator.service
+
+[Install]
+WantedBy=timers.target

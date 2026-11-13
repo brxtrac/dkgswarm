@@ -4,7 +4,11 @@ import path from "node:path";
 import { InvalidClientMetadataError, InvalidScopeError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 
 const DATA_PATH = process.env.DKG_MCP_OAUTH_STORE || "/root/dkg-public-mcp/data/oauth.json";
-const ALLOWED_REDIRECT_HOSTS = (process.env.DKG_MCP_OAUTH_REDIRECT_HOSTS || "grok.com,x.ai")
+// First-party callbacks for current remote MCP clients. Loopback is allowed separately.
+// Hosts match exactly; list a subdomain (for example www.cursor.com) explicitly.
+// An operator can replace this list with DKG_MCP_OAUTH_REDIRECT_HOSTS.
+const ALLOWED_REDIRECT_HOSTS = (process.env.DKG_MCP_OAUTH_REDIRECT_HOSTS
+  || "grok.com,x.ai,claude.ai,claude.com,chatgpt.com,chat.openai.com,cursor.com,www.cursor.com")
   .split(",")
   .map((h) => h.trim().toLowerCase())
   .filter(Boolean);
@@ -46,7 +50,7 @@ function redirectHostAllowed(uri) {
     const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
     if (url.username || url.password || url.hash) return false;
     if (LOOPBACK_REDIRECT_HOSTS.has(host)) return ["http:", "https:"].includes(url.protocol);
-    return url.protocol === "https:" && ALLOWED_REDIRECT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+    return url.protocol === "https:" && ALLOWED_REDIRECT_HOSTS.includes(host);
   } catch {
     return false;
   }
@@ -176,9 +180,17 @@ export function validateAuthorizationRequest(params, expectedResource) {
   if (params.response_type !== "code") return "response_type must be code";
   if (!params.code_challenge) return "code_challenge required";
   if (params.code_challenge_method !== "S256") return "code_challenge_method must be S256";
-  const scopes = params.scope ? String(params.scope).split(" ").filter(Boolean) : ["dkg:read"];
+  // offline_access is a common OIDC scope; refresh tokens are always issued here.
+  const scopes = (params.scope ? String(params.scope).split(" ").filter(Boolean) : ["dkg:read"])
+    .filter((scope) => scope !== "offline_access");
   if (scopes.some((scope) => !["dkg:read", "dkg:write"].includes(scope))) return "unsupported scope requested";
-  if (params.resource !== expectedResource) return "resource must match MCP endpoint";
+  // Spec-compliant clients send resource; older clients omit it. This server has one
+  // resource, so default only when absent and still reject a mismatched value.
+  if (params.resource !== undefined) {
+    let resource;
+    try { resource = new URL(params.resource); } catch { return "resource must be an absolute URI"; }
+    if (resource.href !== new URL(expectedResource).href) return "resource must match MCP endpoint";
+  }
   return null;
 }
 

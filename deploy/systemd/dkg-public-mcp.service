@@ -1,0 +1,24 @@
+[Unit]
+# Example only. Adapt paths and service account, then test before enabling.
+Description=DKG Swarm public MCP
+After=network-online.target dkg.service
+Wants=network-online.target dkg.service
+
+[Service]
+Type=simple
+User=dkg
+Group=dkg
+WorkingDirectory=/srv/dkg/public-mcp
+EnvironmentFile=/etc/dkg/public-mcp.env
+ExecStart=/usr/bin/node /srv/dkg/public-mcp/server.mjs
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/dkg
+
+[Install]
+WantedBy=multi-user.target

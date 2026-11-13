@@ -16,12 +16,15 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm test
-      - run: node --check server.mjs
-      - run: node --check publish-policy.mjs
       - run: npm ci
         working-directory: collector
       - run: npm test
+      - run: npm test
         working-directory: collector
+      - run: node --check server.mjs
+      - run: node --check publish-policy.mjs
+      - run: node --check scheduler/scheduled-curator.mjs
+      - run: node --check scripts/check-imports.mjs
+      - run: npm run check:imports
       - run: node --check watcher.mjs && node --check curator.mjs
         working-directory: collector
