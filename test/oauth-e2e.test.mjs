@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const serverPath = fileURLToPath(new URL("../server.mjs", import.meta.url));
 
@@ -196,16 +198,24 @@ test("isolated server completes discovery, DCR, PKCE exchange, and MCP initializ
   assert.match(toolsText, /graph_info/);
   assert.match(toolsText, /write_working_memory/);
 
-  const write = await mcpPost({
-    jsonrpc: "2.0",
-    id: 3,
-    method: "tools/call",
-    params: { name: "write_working_memory", arguments: { name: "e2e-draft", text: "x".repeat(40) } },
+  const sdkTransport = new StreamableHTTPClientTransport(new URL(`${publicUrl}/mcp`), {
+    requestInit: { headers: { Authorization: `Bearer ${tokens.access_token}` } },
   });
-  assert.equal(write.status, 200);
-  const writeText = await write.text();
-  assert.match(writeText, /Write denied/);
-  assert.match(writeText, /"isError":true/);
+  const sdkClient = new Client({ name: "e2e-sdk", version: "0" });
+  await sdkClient.connect(sdkTransport);
+  try {
+    const listed = await sdkClient.listTools();
+    assert.ok(listed.tools.some((tool) => tool.name === "graph_info"));
+    assert.ok(listed.tools.some((tool) => tool.name === "write_working_memory"));
+    const denied = await sdkClient.callTool({
+      name: "write_working_memory",
+      arguments: { name: "e2e-draft", text: "x".repeat(40) },
+    });
+    assert.equal(denied.isError, true);
+    assert.match(denied.content[0].text, /Write denied/);
+  } finally {
+    await sdkClient.close();
+  }
 
   const badToken = await fetch(`${publicUrl}/mcp`, {
     method: "POST",
