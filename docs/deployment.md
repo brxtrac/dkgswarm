@@ -2,7 +2,8 @@
 
 This repository is the canonical source for the application files listed below. It is not a
 complete production image: private environment, systemd units, proxy routing, OAuth/writer
-stores, databases, node modules, and generated assets stay on the host.
+stores, databases, node modules, and generated assets stay on the host. See
+[`source-coverage.md`](source-coverage.md) for the component-by-component boundary.
 
 Deployment is a manual, reviewed copy. Nothing here pulls, deploys, or restarts on its own.
 
@@ -170,6 +171,25 @@ Reader access needs only the DKG node API. `write_working_memory`, `enable_write
 collective-push delivery also need a writer codes file, the curator script
 (`TRAC_CURATOR_SCRIPT`), its intake database (`TRAC_CURATOR_INTAKE`), and `/usr/bin/flock`.
 Without those, keep the deployment reader-only rather than advertising write support.
+
+## Example systemd units
+
+[`deploy/systemd/`](../deploy/systemd/) contains example units for the MCP, collector, and
+daily health check. They assume a dedicated `dkg` user, code under `/srv/dkg/public-mcp` and
+`/srv/dkg/webhooks`, environment files under `/etc/dkg/`, and writable state under
+`/var/lib/dkg`. Adapt every path, create the account and directories with restrictive
+permissions, then review the resolved environment and test the units in a staging host:
+
+```bash
+systemd-analyze verify deploy/systemd/dkg-public-mcp.service
+systemctl daemon-reload
+systemctl enable --now dkg-public-mcp.service
+```
+
+The units harden the service with `ProtectSystem=strict`, `ProtectHome=true`, and a single
+`ReadWritePaths` entry, so add any extra writable path explicitly. They are examples, not an
+installer: this repository does not copy units, create users, restart services, or enable
+timers.
 
 ## Source parity is not deployed parity
 

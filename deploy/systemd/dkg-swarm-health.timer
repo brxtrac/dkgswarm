@@ -1,0 +1,12 @@
+[Unit]
+# Example only. Adapt paths and schedule, then test before enabling.
+Description=Run the DKG Swarm health check daily
+
+[Timer]
+OnCalendar=*-*-* 07:10:00
+Persistent=true
+RandomizedDelaySec=15min
+Unit=dkg-swarm-health.service
+
+[Install]
+WantedBy=timers.target
