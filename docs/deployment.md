@@ -194,10 +194,11 @@ TRAC_CURATOR_AGENT_POLICY="$AGENTS/trac-marketing-curator.md" \
 node "$RELEASE/scripts/check-curator-config.mjs"
 ```
 
-The check is model-free. It verifies the policy path is OpenCode's discovered agents path,
-hashes that same file, rejects a system or project override, and asks `opencode debug agents
---standalone` whether the agent ID resolves. If `XDG_CONFIG_HOME` is set for the service, set
-it for the check too.
+The check is model-free. It follows the scheduler's `TRAC_CURATOR_AGENT_POLICY` override,
+verifies the policy path is OpenCode's discovered agents path, hashes that same file, rejects a
+system or project override, and asks `opencode debug agents --standalone` whether the agent ID
+resolves. An override outside the discovered directory fails instead of falling back to the
+default. If `XDG_CONFIG_HOME` is set for the service, set it for the check too.
 
 A policy change intentionally stops the next run: archive
 `/root/trac-marketing-drafts/data/curator-state.json` only with explicit owner approval, then

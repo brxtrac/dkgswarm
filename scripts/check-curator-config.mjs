@@ -7,8 +7,7 @@ import { fileURLToPath } from 'node:url';
 // OpenCode discovers Markdown agents from its global config directory. This check proves the
 // policy file the scheduler hashes is the one OpenCode will select; it never calls a model.
 export function configRoot(env = process.env) {
-  const base = env.XDG_CONFIG_HOME || (env.HOME ? path.join(env.HOME, '.config') : '');
-  if (!base) throw new Error('HOME or XDG_CONFIG_HOME is required');
+  const base = env.XDG_CONFIG_HOME || path.join(env.HOME || '/root', '.config');
   return path.join(path.resolve(base), 'opencode');
 }
 
@@ -43,7 +42,9 @@ export function checkLayout({
   systemRoot = '/etc/opencode',
 } = {}) {
   const expected = expectedAgentPath({ agentName, env });
-  const actual = path.resolve(policyPath || expected);
+  // Same priority as the scheduler: explicit argument, then environment, then default.
+  const selected = policyPath || env.TRAC_CURATOR_AGENT_POLICY || expected;
+  const actual = path.resolve(selected);
   if (actual !== expected) {
     throw new Error(`policy is not in OpenCode's discovered agents directory: ${actual} != ${expected}`);
   }
@@ -82,7 +83,11 @@ export function discoverAgent({
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const agentName = process.env.TRAC_CURATOR_AGENT || 'trac-marketing-curator';
-  const layout = checkLayout({ agentName });
+  const args = process.argv.slice(2);
+  const flag = args.indexOf('--policy');
+  const policyPath = flag === -1 ? undefined : args[flag + 1];
+  if (flag !== -1 && !policyPath) throw new Error('--policy requires a path');
+  const layout = checkLayout({ agentName, policyPath });
   discoverAgent({ agentName });
   console.log(JSON.stringify({ agent: agentName, policy: layout.policyPath, policySha256: layout.sha256, discovered: true }));
 }
