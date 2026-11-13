@@ -23,13 +23,16 @@ Configuration is environment-overridable so the code can run outside the current
 | --- | --- |
 | `TRAC_DRAFTS_DIR` | `/root/trac-marketing-drafts` |
 | `TRAC_CURATOR_SCRIPT` | `/root/dkg-swarm-webhooks/curator.mjs` |
-| `TRAC_CURATOR_AGENT_POLICY` | `/root/.config/opencode/agents/trac-marketing-curator.md` |
+| `TRAC_CURATOR_AGENT_POLICY` | `$XDG_CONFIG_HOME/opencode/agents/trac-marketing-curator.md`, or `~/.config/opencode/agents/trac-marketing-curator.md` when XDG is unset |
 | `TRAC_CURATOR_AGENT` | `trac-marketing-curator` |
 | `TRAC_CURATOR_MODEL` | `9router/cx/gpt-6-sol` |
 
 `trac-marketing-curator.agent.md` is the non-secret agent-policy template. Render its
-`$TRAC_CURATOR_SCRIPT` reference to the deployed curator path before installing it. The
-scheduler needs Node.js, `opencode`, `flock`, and `timeout`; it has no npm dependencies.
+`$TRAC_CURATOR_SCRIPT` reference to the deployed curator path and install it in OpenCode's
+discovered global agents directory; a hash path alone does not select the executing agent.
+`scripts/check-curator-config.mjs` verifies the path, hash, override absence, and actual agent
+discovery without calling a model. The scheduler needs Node.js, `opencode`, `flock`, and
+`timeout`; it has no npm dependencies.
 
 The mocked regression suite is `test/scheduler.test.mjs`; it uses synthetic inventory,
 policy, and OpenCode fixtures and never calls a model. See

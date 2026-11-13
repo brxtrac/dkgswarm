@@ -10,7 +10,8 @@
   "main": "server.mjs",
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "check:imports": "node scripts/check-imports.mjs"
+    "check:imports": "node scripts/check-imports.mjs",
+    "check:curator-config": "node scripts/check-curator-config.mjs"
   },
   "keywords": [],
   "author": "",

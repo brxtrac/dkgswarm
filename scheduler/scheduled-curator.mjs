@@ -10,8 +10,10 @@ const [providerID, ...modelParts] = model.split('/');
 const modelID = modelParts.join('/');
 if (!providerID || !modelID) throw new Error('TRAC_CURATOR_MODEL must be provider/model');
 const curatorScript = process.env.TRAC_CURATOR_SCRIPT || '/root/dkg-swarm-webhooks/curator.mjs';
-const agentPolicy = process.env.TRAC_CURATOR_AGENT_POLICY || '/root/.config/opencode/agents/trac-marketing-curator.md';
 const agentName = process.env.TRAC_CURATOR_AGENT || 'trac-marketing-curator';
+// OpenCode discovers agents under its global config directory (XDG or ~/.config).
+const configHome = process.env.XDG_CONFIG_HOME || `${process.env.HOME || '/root'}/.config`;
+const agentPolicy = process.env.TRAC_CURATOR_AGENT_POLICY || `${configHome}/opencode/agents/${agentName}.md`;
 const prompt = 'Review bounded new TRAC marketing WM drafts; check SWM duplicates first, promote only strong evidenced sources; report results.';
 const statePath = `${directory}/data/curator-state.json`;
 function execute(args, timeout = 15000, maxBuffer = 262144) {

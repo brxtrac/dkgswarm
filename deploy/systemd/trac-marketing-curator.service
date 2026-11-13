@@ -11,10 +11,11 @@ Group=dkg
 WorkingDirectory=/var/lib/dkg/drafts
 EnvironmentFile=-/etc/dkg/curator.env
 Environment=HOME=/var/lib/dkg
+Environment=XDG_CONFIG_HOME=/var/lib/dkg/.config
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=TRAC_DRAFTS_DIR=/var/lib/dkg/drafts
 Environment=TRAC_CURATOR_SCRIPT=/srv/dkg/webhooks/curator.mjs
-Environment=TRAC_CURATOR_AGENT_POLICY=/etc/dkg/agents/trac-marketing-curator.md
+Environment=TRAC_CURATOR_AGENT_POLICY=/var/lib/dkg/.config/opencode/agents/trac-marketing-curator.md
 ExecStart=/usr/bin/flock -n /run/lock/trac-marketing-curator.lock /usr/bin/timeout 12m /usr/bin/node /srv/dkg/scheduler/scheduled-curator.mjs
 TimeoutStartSec=780
 UMask=0077

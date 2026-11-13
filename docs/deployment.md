@@ -162,7 +162,9 @@ curl -fsS https://www.dkgswarm.com/.well-known/oauth-authorization-server
 ```
 
 Import validation exits nonzero on a missing relative file or package from the runtime root.
-A 401 from `POST /mcp` without a token is expected and must include
+An absent `viem` is reported as an optional warning; when `TRAC_VIEM_MODULE` is explicitly set,
+a path that does not resolve as the collector would load it is fatal. A 401 from `POST /mcp`
+without a token is expected and must include
 `WWW-Authenticate: Bearer ... resource_metadata=...`. An allowed-origin `OPTIONS /mcp`
 preflight must return 204 with `Access-Control-Allow-Origin`; this requires the new
 `mcp-cors.mjs` deployment.
@@ -171,9 +173,10 @@ preflight must return 204 with `Access-Control-Allow-Origin`; this requires the 
 
 The scheduler reads `scheduler/trac-marketing-curator.agent.md` indirectly through the
 installed agent policy at `/root/.config/opencode/agents/trac-marketing-curator.md` and hashes
-both that file and the curator script. Render the template's `$TRAC_CURATOR_SCRIPT` reference
-to the deployed curator path (or set `TRAC_CURATOR_SCRIPT` in the service environment) before
-installing it:
+both that file and the curator script. A hash path alone does not select the executing agent:
+OpenCode discovers Markdown agents from its global config directory (`$XDG_CONFIG_HOME/opencode`
+or `~/.config/opencode`), so install the file there. Render the template's
+`$TRAC_CURATOR_SCRIPT` reference to the deployed curator path before installing it:
 
 ```bash
 COL=/root/dkg-swarm-webhooks
@@ -183,7 +186,17 @@ sed "s|\$TRAC_CURATOR_SCRIPT|$COL/curator.mjs|g" \
   "$RELEASE/scheduler/trac-marketing-curator.agent.md" > "$TMP"
 install -m 0644 "$TMP" "$AGENTS/trac-marketing-curator.md"
 rm -f "$TMP"
+
+HOME=/root \
+TRAC_DRAFTS_DIR=/root/trac-marketing-drafts \
+TRAC_CURATOR_AGENT_POLICY="$AGENTS/trac-marketing-curator.md" \
+node "$RELEASE/scripts/check-curator-config.mjs"
 ```
+
+The check is model-free. It verifies the policy path is OpenCode's discovered agents path,
+hashes that same file, rejects a system or project override, and asks `opencode debug agents
+--standalone` whether the agent ID resolves. If `XDG_CONFIG_HOME` is set for the service, set
+it for the check too.
 
 A policy change intentionally stops the next run: archive
 `/root/trac-marketing-drafts/data/curator-state.json` only with explicit owner approval, then

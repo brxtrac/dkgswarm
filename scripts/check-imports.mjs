@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Host-provided optional integrations are reported, not treated as missing.
@@ -30,7 +31,7 @@ export function extractSpecifiers(source) {
   return [...found];
 }
 
-export function findMissing(root = process.cwd()) {
+export function findMissing(root = process.cwd(), env = process.env) {
   const base = path.resolve(root);
   const missing = [];
   const warnings = [];
@@ -47,7 +48,7 @@ export function findMissing(root = process.cwd()) {
         } else {
           // Resolve bare packages from the importing file, so per-service node_modules are checked.
           // shortcut: createRequire covers current CJS/dual packages; add an import-only
-          // resolver here if a dependency ships only an "import" export condition.
+          // resolver here if a dependency ships an import-condition-only export.
           createRequire(file).resolve(specifier);
         }
       } catch {
@@ -55,6 +56,24 @@ export function findMissing(root = process.cwd()) {
         if (OPTIONAL.has(specifier)) warnings.push(record);
         else missing.push(record);
       }
+    }
+  }
+  const viemFile = [path.join(base, 'collector', 'network-stats.mjs'), path.join(base, 'network-stats.mjs')]
+    .find((candidate) => fs.existsSync(candidate));
+  if (viemFile) {
+    const configured = typeof env.TRAC_VIEM_MODULE === 'string' && env.TRAC_VIEM_MODULE.trim() !== '';
+    const specifier = configured ? env.TRAC_VIEM_MODULE : 'viem';
+    const script = `const m = await import(${JSON.stringify(pathToFileURL(viemFile).href)});
+      if (typeof m.loadViem !== 'function') throw new Error('loadViem export missing');
+      await m.loadViem();`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '--eval', script], {
+      cwd: path.dirname(viemFile), env: { ...process.env, ...env }, encoding: 'utf8',
+      timeout: 30000, maxBuffer: 1024 * 1024,
+    });
+    if (result.status !== 0) {
+      const record = { file: path.relative(base, viemFile), specifier };
+      if (configured) missing.push(record);
+      else warnings.push({ ...record, optional: true });
     }
   }
   return { files: files.length, missing, warnings };

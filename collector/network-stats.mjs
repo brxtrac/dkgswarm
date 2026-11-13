@@ -9,6 +9,12 @@ const WAD = 10n ** 18n;
 const MAX_LOCK = 6n;
 const MULTICALL = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const SHARD = 1n;
+// Host-provided or operator-installed viem; the import resolver validates this same path.
+const VIEM_MODULE = process.env.TRAC_VIEM_MODULE || "viem";
+
+export async function loadViem() {
+  return import(VIEM_MODULE);
+}
 
 const CHAINS = [
   {
@@ -266,9 +272,7 @@ export function annualizedYieldPct({ rewardWei, effectiveStakeWei, epochLengthSe
 }
 
 async function readChainYield() {
-  // Host-provided or operator-installed viem; override with an absolute module path when needed.
-  const viemModule = process.env.TRAC_VIEM_MODULE || "viem";
-  const { createPublicClient, http, encodeFunctionData, decodeFunctionResult } = await import(viemModule);
+  const { createPublicClient, http, encodeFunctionData, decodeFunctionResult } = await loadViem();
   const rows = [];
   for (const chain of CHAINS) {
     const client = createPublicClient({ transport: http(chain.rpc, { timeout: 20000 }) });

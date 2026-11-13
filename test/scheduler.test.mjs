@@ -16,7 +16,8 @@ test('scheduler runs bounded inventory, refuses changed policy, and never repeat
     writeFileSync(`${root}/curator-stub.mjs`, `import { readFileSync } from 'node:fs';
 console.log(readFileSync('${root}/inventory.json', 'utf8'));
 `);
-    writeFileSync(`${root}/agent-policy.md`, 'synthetic curator policy\n');
+    mkdirSync(`${root}/config/opencode/agents`, { recursive: true });
+    writeFileSync(`${root}/config/opencode/agents/trac-marketing-curator.md`, 'synthetic curator policy\n');
     writeFileSync(`${root}/bin/opencode`, `#!/usr/bin/env node
 const fs = require('node:fs');
 fs.appendFileSync('${root}/calls', process.argv[2] + '\\n');
@@ -35,7 +36,7 @@ if (process.argv[2] === 'api' && process.argv[4] === '/api/session') {
       PATH: `${root}/bin:${process.env.PATH}`,
       TRAC_DRAFTS_DIR: root,
       TRAC_CURATOR_SCRIPT: `${root}/curator-stub.mjs`,
-      TRAC_CURATOR_AGENT_POLICY: `${root}/agent-policy.md`,
+      XDG_CONFIG_HOME: `${root}/config`,
     };
     const run = (extra = {}) => spawnSync(process.execPath, [`${root}/worker.mjs`], { env: { ...env, ...extra }, encoding: 'utf8' });
     const calls = () => existsSync(`${root}/calls`) ? readFileSync(`${root}/calls`, 'utf8') : '';

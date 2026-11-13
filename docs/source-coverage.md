@@ -25,9 +25,10 @@ be audited.
 | Collector HTTP service | `collector/server.mjs`, `collector/network-stats.mjs`, `collector/health-public.mjs` | `dkg-swarm-webhooks.service` | Registration, fan-out, stats, watcher administration |
 | Collector watcher and curator | `collector/watcher.mjs`, `collector/curator.mjs`, `collector/QUERIES.md` | same service; `curator.mjs` also copied beside the MCP process | The MCP imports `./collector/curator.mjs`; the host copy is a path mapping, not different source |
 | Daily health check | `collector/health-check.mjs` | `dkg-swarm-health.service` and timer | Oneshot; reads the graph and writes a status file outside Git |
-| Scheduled curator | `scheduler/scheduled-curator.mjs`, `scheduler/trac-marketing-curator.agent.md` | `trac-marketing-curator.service` and timer; agent policy at `/root/.config/opencode/agents/trac-marketing-curator.md` | Deterministic inventory, bounded model run, session ownership check, cleanup, backoff and three-failure quarantine. Host paths are environment-overridable; defaults match the live install |
+| Scheduled curator | `scheduler/scheduled-curator.mjs`, `scheduler/trac-marketing-curator.agent.md` | `trac-marketing-curator.service` and timer; agent policy at `/root/.config/opencode/agents/trac-marketing-curator.md` | Deterministic inventory, bounded model run, session ownership check, cleanup, backoff and three-failure quarantine. Host paths are environment-overridable; the agent policy must live in OpenCode's discovered global agents directory, not merely at the hashed path |
+| Config validation | `scripts/check-curator-config.mjs` | release worktree / scheduler host | Model-free check that the policy is in OpenCode's discovered agents directory, hashes that file, rejects system/project overrides, and confirms the agent ID via `opencode debug agents --standalone` |
 | Service definitions | `deploy/systemd/*.service`, `deploy/systemd/*.timer` | installed units under `/etc/systemd/system/` | Templates show environment-file and working-directory shape; not installed by this repository |
-| Import validation | `scripts/check-imports.mjs` | release worktree / runtime roots | Resolves every static import from the importing file; fails on missing relative files or packages and reports optional `viem` |
+| Import validation | `scripts/check-imports.mjs` | release worktree / runtime roots | Resolves static imports and actually invokes `loadViem`; warns when optional `viem` is absent, fails when `TRAC_VIEM_MODULE` is explicitly set but invalid |
 | Static site | `site/*` | public web root behind the edge proxy | Tracked for history and already public. Website content/build work is outside this publication change; these files are not modified or deleted here |
 | Tests and CI | `test/*`, `collector/test/*`, `.github/workflows/ci.yml` | CI only | Root suite (MCP, scheduler, import checks) and collector suite run on Node.js 22 and 24 |
 | Docs and licensing | `README.md`, `docs/*`, `LICENSE`, `THIRD_PARTY_NOTICES.md` | not deployed | MIT owner license; merged PR #1 ISC notice preserved |
@@ -71,7 +72,7 @@ uses them is above.
 | `node_modules/` | Reinstalled from the committed lockfiles |
 | Installed systemd units, proxy configuration, host paths | Host-specific; templates and a copy procedure are provided instead |
 | OriginTrail DKG node (`@origintrail-official/dkg` 10.0.23), its keystore, `auth.token`, node config and databases | Third-party runtime, not DKG Swarm source. Install from the upstream project at `https://github.com/OriginTrail/dkg`; this repository only calls its HTTP API |
-| `viem` | Optional collector APR integration. Imported from the collector runtime as `viem`, or from `TRAC_VIEM_MODULE` when the operator points at an existing module entry point. No bundled install and no source copy |
+| `viem` | Optional collector APR integration. Imported from the collector runtime as `viem`, or from `TRAC_VIEM_MODULE` when the operator points at an existing package or file. The import check warns when absent and fails when an explicit path is invalid. No bundled install and no source copy |
 | `research-app/` | Website research and social-preview data generator. It feeds public site pages, is outside the MCP/collector runtime, and keeps private data. Excluded with the website scope; not a hidden dependency of the published services |
 | Generated social previews, research data, fonts, live roadmap | Generated website artifacts, reproducible from their generators, which are outside this change |
 | Legacy game/Express service (host `/var/www/dkgswarm.com/game`) and removed game code | Website/game surface removed from this repository by commit `e520709`; the host copy is website legacy, excluded with the website scope |
@@ -99,7 +100,7 @@ separate projects and are not DKG Swarm components.
 | Collector process | `collector/*` | Tracked source matched the host at inspection; only package metadata and lockfile were newer in Git |
 | Static site | `site/*` | Host snapshot predates the repository's current site text; website work is out of scope here |
 | Health timer | `collector/health-check.mjs`, `deploy/systemd/dkg-swarm-health.*` | Source matches; schedule and status path are host configuration |
-| Scheduled curator | `scheduler/scheduled-curator.mjs`, `scheduler/trac-marketing-curator.agent.md` | Host source used for this publication. The tracked version parameterizes draft directory, curator script, agent policy, agent name and model through environment variables and invokes the inventory with the running Node binary; defaults match the live install. State and sessions stay private |
+| Scheduled curator | `scheduler/scheduled-curator.mjs`, `scheduler/trac-marketing-curator.agent.md` | Host source used for this publication. The tracked version parameterizes draft directory, curator script, agent policy, agent name and model through environment variables and invokes the inventory with the running Node binary; the policy default follows `$XDG_CONFIG_HOME`/`~/.config`, matching OpenCode discovery. State and sessions stay private |
 | Policy served to readers | `get_swarm_policy` in `server.mjs`, `policy-integrity.mjs` | Live policy is v19; the repository ships v18 and v19 snapshots, not the private live pointer |
 
 The live host was inspected read-only. No deployment, restart, policy publication, or graph
@@ -117,13 +118,18 @@ write was performed while preparing this revision.
 ## Reproduce the checks
 
 ```bash
-npm ci && npm test                 # root (includes scheduler and import checks), Node.js 22 and 24
-cd collector && npm ci && npm test # collector, Node.js 22 and 24
+npm ci
+(cd collector && npm ci)
+npm test                            # root (includes scheduler and import checks), Node.js 22 and 24
+(cd collector && npm test)          # collector, Node.js 22 and 24
 node --check server.mjs
 node --check collector/watcher.mjs
 node --check scheduler/scheduled-curator.mjs
 node scripts/check-imports.mjs
 ```
+
+Both dependency trees are installed before the root suite because the import regression checks
+the collector's resolved packages.
 
 `test/oauth-e2e.test.mjs` starts the real server with temporary stores and an unreachable DKG
 API, then exercises discovery, dynamic registration, PKCE, token exchange, refresh, MCP
