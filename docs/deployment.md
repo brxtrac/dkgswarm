@@ -124,10 +124,14 @@ modules. They do not touch `.env`, `data/`, OAuth/writer stores, or logs. If npm
 the registry, stop before restart and fix the cache/network; do not start a service with
 missing dependencies.
 
-The collector's on-chain APR path imports `viem`. Install it in the collector root when that
-path is used, or set `TRAC_VIEM_MODULE` to an absolute module entry point already present on
-the host. The scheduler itself has no npm dependencies; it needs the Node.js runtime,
-`opencode`, `flock`, and `timeout`.
+The collector's on-chain APR path imports `viem`. Set `TRAC_VIEM_MODULE` to an existing
+module entry point already present on the host, or add `viem` through the normal reviewed
+collector dependency change (package metadata and lockfile). A manual `npm install` in the
+runtime root is removed by the next `npm ci`. If neither is provided, that APR read fails
+while the rest of the collector continues to run.
+
+The scheduler has no npm dependencies; it needs the Node.js runtime, `opencode`, `flock`, and
+`timeout`.
 
 ## Validate before restart
 
