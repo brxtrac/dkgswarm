@@ -44,17 +44,22 @@ uses them is above.
 | `viem` | Optional host-provided dependency for the collector's on-chain APR path; no bundled install and no source copy |
 | `research-app/` | Website research and social-preview data generator. It feeds public site pages, is outside the MCP/collector runtime, and keeps private data. Excluded with the website scope; not a hidden dependency of the published services |
 | Generated social previews, research data, fonts, live roadmap | Generated website artifacts, reproducible from their generators, which are outside this change |
+| Legacy game/Express service (host `/var/www/dkgswarm.com/game`) and removed game code | Website/game surface removed from this repository by commit `e520709`; the host copy is website legacy, excluded with the website scope |
 | Historical policy snapshots before v18 | Public at the time but not needed to audit current code. Two consecutive snapshots are included so the version/digest format and change from v18 to v19 are reviewable |
 
 ## Experimental source
 
-The opt-in scout/worker lane is not part of this revision. It exists as reviewed local
-branch `scout-x-optin-lane` at `172155d22edafbe9a50345ae05f65f821635ed57`, based on
-canonical `main` and disabled unless private config and capability paths are set. Merging it
-into the stable service would change the advertised task-dispatch profile and add a second
-job state machine, so it is kept as a separate source candidate rather than mixed into this
-branch. Publication of that branch is a separate decision; activating it remains an
-operator action requiring its own review.
+The opt-in scout/worker lane is not part of this revision. It exists as local branch
+`scout-x-optin-lane` at `172155d22edafbe9a50345ae05f65f821635ed57`, based on
+canonical `main` and disabled unless private config and capability paths are set. Its
+independent review evidence is retained outside this repository. Merging it into the stable
+service would change the advertised task-dispatch profile and add a second job state
+machine, so it is kept as a separate source candidate rather than mixed into this branch.
+Publication of that branch is a separate decision; activating it remains an operator action
+requiring its own review.
+
+Other services on the same host (for example `dkgbuidl`, `aipharmagent`, and the wiki) are
+separate projects and are not DKG Swarm components.
 
 ## How live behavior maps to source
 
