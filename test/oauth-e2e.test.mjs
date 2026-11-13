@@ -130,6 +130,8 @@ test("isolated server completes discovery, DCR, PKCE exchange, and MCP initializ
   });
   const wrongResource = await fetch(`${publicUrl}/authorize?${new URLSearchParams({ ...Object.fromEntries(params), resource: "https://other.example/mcp" })}`, { redirect: "manual" });
   assert.equal(wrongResource.status, 400);
+  const unknownScope = await fetch(`${publicUrl}/authorize?${new URLSearchParams({ ...Object.fromEntries(params), scope: "admin" })}`, { redirect: "manual" });
+  assert.equal(unknownScope.status, 400);
 
   const authorization = await fetch(`${publicUrl}/authorize`, {
     method: "POST",
@@ -144,39 +146,81 @@ test("isolated server completes discovery, DCR, PKCE exchange, and MCP initializ
   const code = target.searchParams.get("code");
   assert.ok(code);
 
-  const tokenResponse = await fetch(`${publicUrl}/token`, {
+  const tokenForm = (fields) => fetch(`${publicUrl}/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       client_id: client.client_id,
       code,
-      code_verifier: verifier,
       redirect_uri: redirect,
+      ...fields,
     }),
   });
+  // Failed exchanges must not consume the code.
+  const wrongPkce = await tokenForm({ code_verifier: "wrong-verifier" });
+  assert.equal(wrongPkce.status, 400);
+  assert.equal((await wrongPkce.json()).error, "invalid_grant");
+  const wrongTokenResource = await tokenForm({ code_verifier: verifier, resource: "https://other.example/mcp" });
+  assert.equal(wrongTokenResource.status, 400);
+
+  const tokenResponse = await tokenForm({ code_verifier: verifier });
   const tokenText = await tokenResponse.text();
   assert.equal(tokenResponse.status, 200, tokenText);
   const tokens = JSON.parse(tokenText);
   assert.equal(tokens.token_type, "bearer");
   assert.equal(tokens.scope, "dkg:read");
 
-  const initialize = await fetch(`${publicUrl}/mcp`, {
+  const mcpPost = (body) => fetch(`${publicUrl}/mcp`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${tokens.access_token}`,
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
     },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e", version: "0" } },
-    }),
+    body: JSON.stringify(body),
+  });
+
+  const initialize = await mcpPost({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "initialize",
+    params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "e2e", version: "0" } },
   });
   assert.equal(initialize.status, 200);
   assert.match(await initialize.text(), /serverInfo/);
+
+  const tools = await mcpPost({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+  assert.equal(tools.status, 200);
+  const toolsText = await tools.text();
+  assert.match(toolsText, /graph_info/);
+  assert.match(toolsText, /write_working_memory/);
+
+  const write = await mcpPost({
+    jsonrpc: "2.0",
+    id: 3,
+    method: "tools/call",
+    params: { name: "write_working_memory", arguments: { name: "e2e-draft", text: "x".repeat(40) } },
+  });
+  assert.equal(write.status, 200);
+  const writeText = await write.text();
+  assert.match(writeText, /Write denied/);
+  assert.match(writeText, /"isError":true/);
+
+  const refresh = (fields) => fetch(`${publicUrl}/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "refresh_token", client_id: client.client_id, ...fields }),
+  });
+  const escalation = await refresh({ refresh_token: tokens.refresh_token, scope: "dkg:write" });
+  assert.equal(escalation.status, 400);
+  assert.equal((await escalation.json()).error, "invalid_scope");
+  const refreshed = await refresh({ refresh_token: tokens.refresh_token, scope: "dkg:read" });
+  assert.equal(refreshed.status, 200);
+  const refreshedTokens = await refreshed.json();
+  assert.equal(refreshedTokens.scope, "dkg:read");
+  const replayRefresh = await refresh({ refresh_token: tokens.refresh_token });
+  assert.equal(replayRefresh.status, 400);
 
   const getMcp = await fetch(`${publicUrl}/mcp`, { headers: { Authorization: `Bearer ${tokens.access_token}` } });
   assert.equal(getMcp.status, 405);

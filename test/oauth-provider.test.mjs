@@ -44,11 +44,11 @@ async function endpoint(t, f) {
   };
 }
 
-test("callback validation restricts protocols, normalizes IPv6, and preserves host boundaries", () => {
-  for (const url of ["https://grok.com/callback", "https://sub.grok.com/callback", "http://127.0.0.1:8787/callback", "http://localhost/callback", "http://[::1]:8787/callback", "https://[::1]/callback"]) {
+test("callback validation restricts protocols, normalizes IPv6, and preserves exact host boundaries", () => {
+  for (const url of ["https://grok.com/callback", "https://www.cursor.com/agents/mcp/oauth/callback", "http://127.0.0.1:8787/callback", "http://localhost/callback", "http://[::1]:8787/callback", "https://[::1]/callback"]) {
     assert.equal(isRedirectAllowed(url), true, url);
   }
-  for (const url of ["http://grok.com/callback", "ftp://grok.com/callback", "ftp://localhost/callback", "https://grok.com.evil.example/callback", "https://unapproved.example/callback", "https://user:password@grok.com/callback", "https://grok.com/callback#fragment"]) {
+  for (const url of ["https://sub.grok.com/callback", "https://sub.claude.ai/callback", "http://grok.com/callback", "ftp://grok.com/callback", "ftp://localhost/callback", "https://grok.com.evil.example/callback", "https://unapproved.example/callback", "https://user:password@grok.com/callback", "https://grok.com/callback#fragment"]) {
     assert.equal(isRedirectAllowed(url), false, url);
   }
 });

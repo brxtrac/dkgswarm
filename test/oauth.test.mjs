@@ -124,6 +124,7 @@ test("default redirect allowlist includes current first-party MCP client callbac
     "https://claude.ai/api/mcp/auth_callback",
     "https://chatgpt.com/connector_platform_oauth_redirect",
     "https://chatgpt.com/connector/oauth/abc123",
+    "https://cursor.com/agents/mcp/oauth/callback",
     "https://www.cursor.com/agents/mcp/oauth/callback",
     "https://x.ai/oauth/callback",
   ]) {
@@ -133,6 +134,9 @@ test("default redirect allowlist includes current first-party MCP client callbac
     "https://claude.ai.evil.example/callback",
     "https://notchatgpt.com/callback",
     "https://chatgpt.com.evil.example/callback",
+    "https://sub.claude.ai/callback",
+    "https://sub.cursor.com/callback",
+    "https://sub.grok.com/callback",
   ]) {
     assert.equal(isRedirectAllowed(url), false, url);
   }

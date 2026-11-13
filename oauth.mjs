@@ -5,9 +5,10 @@ import { InvalidClientMetadataError, InvalidScopeError } from "@modelcontextprot
 
 const DATA_PATH = process.env.DKG_MCP_OAUTH_STORE || "/root/dkg-public-mcp/data/oauth.json";
 // First-party callbacks for current remote MCP clients. Loopback is allowed separately.
+// Hosts match exactly; list a subdomain (for example www.cursor.com) explicitly.
 // An operator can replace this list with DKG_MCP_OAUTH_REDIRECT_HOSTS.
 const ALLOWED_REDIRECT_HOSTS = (process.env.DKG_MCP_OAUTH_REDIRECT_HOSTS
-  || "grok.com,x.ai,claude.ai,claude.com,chatgpt.com,chat.openai.com,cursor.com")
+  || "grok.com,x.ai,claude.ai,claude.com,chatgpt.com,chat.openai.com,cursor.com,www.cursor.com")
   .split(",")
   .map((h) => h.trim().toLowerCase())
   .filter(Boolean);
@@ -49,7 +50,7 @@ function redirectHostAllowed(uri) {
     const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
     if (url.username || url.password || url.hash) return false;
     if (LOOPBACK_REDIRECT_HOSTS.has(host)) return ["http:", "https:"].includes(url.protocol);
-    return url.protocol === "https:" && ALLOWED_REDIRECT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+    return url.protocol === "https:" && ALLOWED_REDIRECT_HOSTS.includes(host);
   } catch {
     return false;
   }
