@@ -67,6 +67,6 @@ export async function loadViem() { return import(moduleName); }
 
 test('this checkout resolves every tracked source import', () => {
   const root = fileURLToPath(new URL('..', import.meta.url));
-  const result = findMissing(root);
+  const result = findMissing(root, { ...process.env, TRAC_VIEM_MODULE: '' });
   assert.deepEqual(result.missing, []);
 });
