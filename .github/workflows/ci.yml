@@ -17,7 +17,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run check:imports
       - run: node --check server.mjs
       - run: node --check publish-policy.mjs
       - run: node --check scheduler/scheduled-curator.mjs
@@ -26,5 +25,6 @@ jobs:
         working-directory: collector
       - run: npm test
         working-directory: collector
+      - run: npm run check:imports
       - run: node --check watcher.mjs && node --check curator.mjs
         working-directory: collector
