@@ -175,12 +175,13 @@ The scheduler reads `scheduler/trac-marketing-curator.agent.md` indirectly throu
 installed agent policy at `/root/.config/opencode/agents/trac-marketing-curator.md` and hashes
 both that file and the curator script. A hash path alone does not select the executing agent:
 OpenCode discovers Markdown agents from its global config directory (`$XDG_CONFIG_HOME/opencode`
-or `~/.config/opencode`), so install the file there. Render the template's
-`$TRAC_CURATOR_SCRIPT` reference to the deployed curator path before installing it:
+or `~/.config/opencode`), so create that directory and install the file there. Render the
+template's `$TRAC_CURATOR_SCRIPT` reference to the deployed curator path before installing it:
 
 ```bash
 COL=/root/dkg-swarm-webhooks
 AGENTS=/root/.config/opencode/agents
+install -d "$AGENTS" /root/trac-marketing-drafts
 TMP=$(mktemp)
 sed "s|\$TRAC_CURATOR_SCRIPT|$COL/curator.mjs|g" \
   "$RELEASE/scheduler/trac-marketing-curator.agent.md" > "$TMP"

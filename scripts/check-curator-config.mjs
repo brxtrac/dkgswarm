@@ -69,7 +69,7 @@ export function discoverAgent({
   const result = spawnSync(bin, ['debug', 'agents', '--standalone'], {
     env, cwd, encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024,
   });
-  if (result.status !== 0) throw new Error(`OpenCode agent discovery failed: ${result.stderr || result.status}`);
+  if (result.status !== 0) throw new Error(`OpenCode agent discovery failed (${result.error?.message || result.status})`);
   let agents;
   try { agents = JSON.parse(result.stdout); } catch { throw new Error('OpenCode agent discovery returned invalid JSON'); }
   if (!Array.isArray(agents)) throw new Error('OpenCode agent discovery returned an invalid list');
