@@ -1,11 +1,15 @@
 # Deployment and source mapping
 
-This repository is the canonical source for the application files listed below. It is not a
-complete production image: private environment, installed systemd units, proxy routing,
-OAuth/writer stores, databases, node modules, and generated assets stay on the host. See
-[`source-coverage.md`](source-coverage.md) for the component-by-component boundary.
+This repository is the canonical source for the non-website application files listed below.
+It is not a complete production image: private environment, installed systemd units, proxy
+routing, OAuth/writer stores, databases, node modules, and generated assets stay on the host.
+See [`source-coverage.md`](source-coverage.md) for the component-by-component boundary.
 
 Deployment is a manual, reviewed copy. Nothing here pulls, deploys, or restarts on its own.
+
+**The static website is not part of this procedure.** Do not copy, back up, validate, or
+restore `/root/npm/data/dkgswarm.com/public` from this document. A website release is a
+separate operation with its own review and authorization.
 
 ## Runtime paths and services
 
@@ -14,7 +18,9 @@ Deployment is a manual, reviewed copy. Nothing here pulls, deploys, or restarts 
 | root `*.mjs`, `package.json`, `package-lock.json` | `/root/dkg-public-mcp/` | `dkg-public-mcp.service` |
 | `collector/curator.mjs` | `/root/dkg-public-mcp/collector/curator.mjs` | used by the MCP process for curator helpers |
 | `collector/*` | `/root/dkg-swarm-webhooks/` | `dkg-swarm-webhooks.service` |
-| `site/*` | `/root/npm/data/dkgswarm.com/public/` | static site behind the edge proxy |
+| `scheduler/scheduled-curator.mjs` | `/root/trac-marketing-drafts/scheduled-curator.mjs` | `trac-marketing-curator.service` |
+| `scheduler/trac-marketing-curator.agent.md` | `/root/.config/opencode/agents/trac-marketing-curator.md` | read and hashed by the scheduler |
+| `site/*` | not part of this procedure | separate website release |
 | `docs/*`, `test/*`, `README.md`, `LICENSE`, `THIRD_PARTY_NOTICES.md` | not deployed | source and review only |
 
 The extra `collector/curator.mjs` copy is required because the canonical MCP imports
@@ -22,8 +28,9 @@ The extra `collector/curator.mjs` copy is required because the canonical MCP imp
 import path in the deployed copy; copy the file instead.
 
 Keep these private and out of Git and out of release copies: `.env`, `data/`, `node_modules/`,
-`policy-current.json`, `writer-codes.json`, OAuth stores, databases, logs, generated
-`social-previews/`, `research-data/`, and host systemd/proxy configuration.
+`policy-current.json`, `writer-codes.json`, OAuth stores, databases, logs, scheduler state and
+sessions, generated `social-previews/`, `research-data/`, and host systemd/proxy
+configuration.
 
 ## Pull and prepare a release copy
 
@@ -35,42 +42,49 @@ REPO=/root/local-git/dkgswarm
 RELEASE=/tmp/opencode/dkgswarm-release
 git -C "$REPO" fetch origin
 git -C "$REPO" worktree remove --force "$RELEASE" 2>/dev/null || true
-git -C "$REPO" worktree add --detach "$RELEASE" origin/main
+git -C "$REPO" worktree add --detach "$RELEASE" <reviewed-sha>
 git -C "$RELEASE" rev-parse HEAD
 ```
 
-Pin the printed SHA in the deploy record. Install dependencies only when package metadata
-changed since the last deployment:
+Pin the printed SHA in the deploy record. Install dependencies and run the repository checks
+in this throwaway worktree; these installs are for review only and are not the runtime copies:
 
 ```bash
-git -C "$REPO" diff --name-only <previous-sha>..origin/main -- \
-  package.json package-lock.json collector/package.json collector/package-lock.json
+git -C "$RELEASE" rev-parse HEAD
+(cd "$RELEASE" && npm ci && npm test)
+(cd "$RELEASE/collector" && npm ci && npm test)
+node "$RELEASE/scripts/check-imports.mjs" "$RELEASE"
 ```
 
-If that prints any file, run `npm ci` in the release root and in `collector/` before copying.
-The collector's optional on-chain APR path needs a host-provided `viem` install; it is not a
-packaged dependency.
+Record whether `package.json`, `package-lock.json`, `collector/package.json`, or
+`collector/package-lock.json` changed since the last deployed SHA. A changed lockfile means
+the runtime roots need the dependency step below.
 
 ## Back up tracked runtime files
 
 ```bash
 BACKUP=/tmp/opencode/dkgswarm-deploy-backup-$(date -u +%Y%m%dT%H%M%SZ)
-install -d "$BACKUP/mcp/collector" "$BACKUP/collector" "$BACKUP/site"
+DRAFTS=/root/trac-marketing-drafts
+AGENTS=/root/.config/opencode/agents
+install -d "$BACKUP/mcp/collector" "$BACKUP/collector" "$BACKUP/scheduler" "$BACKUP/agents"
 cp -a /root/dkg-public-mcp/*.mjs /root/dkg-public-mcp/package.json /root/dkg-public-mcp/package-lock.json "$BACKUP/mcp/"
 cp -a /root/dkg-public-mcp/collector/curator.mjs "$BACKUP/mcp/collector/" 2>/dev/null || true
 cp -a /root/dkg-swarm-webhooks/*.mjs /root/dkg-swarm-webhooks/package.json /root/dkg-swarm-webhooks/package-lock.json "$BACKUP/collector/"
-cp -a /root/npm/data/dkgswarm.com/public/*.html /root/npm/data/dkgswarm.com/public/*.css \
-  /root/npm/data/dkgswarm.com/public/*.js /root/npm/data/dkgswarm.com/public/*.json \
-  /root/npm/data/dkgswarm.com/public/llms.txt "$BACKUP/site/"
+cp -a "$DRAFTS/scheduled-curator.mjs" "$BACKUP/scheduler/" 2>/dev/null || true
+cp -a "$AGENTS/trac-marketing-curator.md" "$BACKUP/agents/" 2>/dev/null || true
 echo "$BACKUP"
 ```
+
+This backs up source and manifests only. Never copy `.env`, `data/`, OAuth/writer stores, or
+scheduler state into the backup or the repository.
 
 ## Copy reviewed files
 
 ```bash
 MCP=/root/dkg-public-mcp
 COL=/root/dkg-swarm-webhooks
-WEB=/root/npm/data/dkgswarm.com/public
+DRAFTS=/root/trac-marketing-drafts
+AGENTS=/root/.config/opencode/agents
 
 for f in activity.mjs collective-pushes.mjs curator-intake.mjs issue-writer-code.mjs \
          mcp-cors.mjs oauth.mjs oauth-provider.mjs policy-integrity.mjs \
@@ -84,37 +98,103 @@ install -m 0644 "$RELEASE/collector/curator.mjs" "$MCP/collector/curator.mjs"
 rsync -a --checksum --exclude node_modules --exclude data --exclude .env \
   --exclude '*.log' "$RELEASE/collector/" "$COL/"
 
-rsync -a --checksum "$RELEASE/site/" "$WEB/"
+install -m 0644 "$RELEASE/scheduler/scheduled-curator.mjs" "$DRAFTS/scheduled-curator.mjs"
 ```
 
-`rsync` here does not use `--delete`, so live-only generated files are preserved. Site
-social-preview URLs are generated per release; regenerate previews after a copy if the
-deployment keeps that routine.
+`rsync` here does not use `--delete`, so live-only generated files under `$COL` are preserved.
+Do not copy `collector/test/` into a production root if the deployment keeps tests out; it is
+review-only.
+
+## Install dependencies in the runtime roots
+
+Dependencies must be installed in the directories the services actually execute from. The
+release worktree install is not reused, and `node_modules` is never copied from Git.
+
+```bash
+MCP=/root/dkg-public-mcp
+COL=/root/dkg-swarm-webhooks
+(cd "$MCP" && npm ci)
+(cd "$COL" && npm ci)
+```
+
+Run these whenever either lockfile changed, and any time import validation reports missing
+modules. They do not touch `.env`, `data/`, OAuth/writer stores, or logs. If npm cannot reach
+the registry, stop before restart and fix the cache/network; do not start a service with
+missing dependencies.
+
+The collector's on-chain APR path imports `viem`. Install it in the collector root when that
+path is used, or set `TRAC_VIEM_MODULE` to an absolute module entry point already present on
+the host. The scheduler itself has no npm dependencies; it needs the Node.js runtime,
+`opencode`, `flock`, and `timeout`.
 
 ## Validate before restart
 
 ```bash
+MCP=/root/dkg-public-mcp
+COL=/root/dkg-swarm-webhooks
+DRAFTS=/root/trac-marketing-drafts
 node --check "$MCP/server.mjs"
 node --check "$MCP/oauth.mjs"
 node --check "$MCP/mcp-cors.mjs"
 node --check "$COL/watcher.mjs"
 node --check "$COL/curator.mjs"
+node --check "$DRAFTS/scheduled-curator.mjs"
+
+node "$RELEASE/scripts/check-imports.mjs" "$MCP"
+node "$RELEASE/scripts/check-imports.mjs" "$COL"
+node "$RELEASE/scripts/check-imports.mjs" "$DRAFTS"
 
 for f in server.mjs oauth.mjs oauth-provider.mjs mcp-cors.mjs; do
   cmp "$RELEASE/$f" "$MCP/$f" || echo "DIFF $f"
 done
 cmp "$RELEASE/collector/curator.mjs" "$MCP/collector/curator.mjs"
-cmp "$RELEASE/site/join.html" "$WEB/join.html"
+cmp "$RELEASE/scheduler/scheduled-curator.mjs" "$DRAFTS/scheduled-curator.mjs"
 
 curl -fsS http://127.0.0.1:27131/health
 curl -fsS https://www.dkgswarm.com/.well-known/oauth-protected-resource/mcp
 curl -fsS https://www.dkgswarm.com/.well-known/oauth-authorization-server
 ```
 
+Import validation exits nonzero on a missing relative file or package from the runtime root.
 A 401 from `POST /mcp` without a token is expected and must include
 `WWW-Authenticate: Bearer ... resource_metadata=...`. An allowed-origin `OPTIONS /mcp`
 preflight must return 204 with `Access-Control-Allow-Origin`; this requires the new
 `mcp-cors.mjs` deployment.
+
+## Scheduler and curator agent
+
+The scheduler reads `scheduler/trac-marketing-curator.agent.md` indirectly through the
+installed agent policy at `/root/.config/opencode/agents/trac-marketing-curator.md` and hashes
+both that file and the curator script. Render the template's `$TRAC_CURATOR_SCRIPT` reference
+to the deployed curator path (or set `TRAC_CURATOR_SCRIPT` in the service environment) before
+installing it:
+
+```bash
+COL=/root/dkg-swarm-webhooks
+AGENTS=/root/.config/opencode/agents
+TMP=$(mktemp)
+sed "s|\$TRAC_CURATOR_SCRIPT|$COL/curator.mjs|g" \
+  "$RELEASE/scheduler/trac-marketing-curator.agent.md" > "$TMP"
+install -m 0644 "$TMP" "$AGENTS/trac-marketing-curator.md"
+rm -f "$TMP"
+```
+
+A policy change intentionally stops the next run: archive
+`/root/trac-marketing-drafts/data/curator-state.json` only with explicit owner approval, then
+let the next scheduled run reevaluate.
+
+Validate without invoking a model:
+
+```bash
+node --check "$DRAFTS/scheduled-curator.mjs"
+systemd-analyze verify deploy/systemd/trac-marketing-curator.service
+```
+
+Do not run `scheduled-curator.mjs` manually as a validation step; it can create an OpenCode
+session and call the model. The mocked regression suite covers its scheduling, backoff,
+quarantine, cleanup, and refusal paths. Install or change the service/timer only when those
+files changed, then `systemctl daemon-reload`; enabling or changing the timer needs operator
+approval.
 
 ## Restart and confirm
 
@@ -127,8 +207,9 @@ journalctl -u dkg-public-mcp.service -n 20 --no-pager
 ```
 
 Restart `dkg-swarm-webhooks.service` separately only when collector files changed. The
-collector can retry DKG writes during managed graph recovery; do not restart it just because
-the site changed.
+collector can retry DKG writes during managed graph recovery; do not restart it because of an
+unrelated source change. The scheduled curator runs from its timer; do not start a model run
+as part of deployment validation.
 
 ## Rollback
 
@@ -137,12 +218,14 @@ BACKUP=<printed backup directory>
 cp -a "$BACKUP/mcp/." /root/dkg-public-mcp/
 cp -a "$BACKUP/mcp/collector/curator.mjs" /root/dkg-public-mcp/collector/curator.mjs
 cp -a "$BACKUP/collector/." /root/dkg-swarm-webhooks/
-cp -a "$BACKUP/site/." /root/npm/data/dkgswarm.com/public/
-systemctl restart dkg-public-mcp.service
+cp -a "$BACKUP/scheduler/." /root/trac-marketing-drafts/
+cp -a "$BACKUP/agents/." /root/.config/opencode/agents/
 ```
 
-Restore the collector service only if collector files were changed. Re-run the validation
-commands and record the restored SHA.
+If the restored manifests differ from the current ones, run `npm ci` again in the affected
+runtime root and repeat import validation before restarting. Restore the collector service
+only if collector files were changed, and the scheduler unit only if it changed. Re-run the
+validation commands and record the restored SHA.
 
 ## Run the MCP on another host
 
@@ -174,20 +257,19 @@ Without those, keep the deployment reader-only rather than advertising write sup
 
 ## Example systemd units
 
-[`deploy/systemd/`](../deploy/systemd/) contains example units for the MCP, collector, and
-daily health check. They assume a dedicated `dkg` user, code under `/srv/dkg/public-mcp` and
-`/srv/dkg/webhooks`, environment files under `/etc/dkg/`, and writable state under
-`/var/lib/dkg`. Adapt every path, create the account and directories with restrictive
-permissions, then review the resolved environment and test the units in a staging host:
+[`deploy/systemd/`](../deploy/systemd/) contains example units for the MCP, collector, daily
+health check, and scheduled curator. They assume a dedicated `dkg` user, code under
+`/srv/dkg/`, environment files under `/etc/dkg/`, and writable state under `/var/lib/dkg`.
+Adapt every path, create the account and directories with restrictive permissions, then
+review the resolved environment and test the units in a staging host:
 
 ```bash
-systemd-analyze verify deploy/systemd/dkg-public-mcp.service
+systemd-analyze verify deploy/systemd/*.service
 systemctl daemon-reload
-systemctl enable --now dkg-public-mcp.service
 ```
 
-The units harden the service with `ProtectSystem=strict`, `ProtectHome=true`, and a single
-`ReadWritePaths` entry, so add any extra writable path explicitly. They are examples, not an
+The units harden the service with `ProtectSystem=strict`, `ProtectHome=true`, and explicit
+`ReadWritePaths`, so add any extra writable path explicitly. They are examples, not an
 installer: this repository does not copy units, create users, restart services, or enable
 timers.
 
@@ -195,7 +277,7 @@ timers.
 
 At inspection on 2026-11-13, canonical `main` was
 `68c96ecce92c094a8ec275ee86bcf0d43742b084`. The live MCP process ran an older copy with a
-host-specific `../dkg-swarm-webhooks/curator.mjs` import, and the live site copy predated the
-current OpenDKG site text. Those are deployment lags, not a second source of truth. This
-document makes the copy reproducible; it does not claim the host was updated. Record the
-deployed SHA and any files left uncopied in the deploy record.
+host-specific `../dkg-swarm-webhooks/curator.mjs` import. That is a deployment lag, not a
+second source of truth. This document makes the non-website copy reproducible; it does not
+claim the host was updated. Record the deployed SHA and any files left uncopied in the deploy
+record.

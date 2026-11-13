@@ -9,7 +9,8 @@
   "type": "module",
   "main": "server.mjs",
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "check:imports": "node scripts/check-imports.mjs"
   },
   "keywords": [],
   "author": "",

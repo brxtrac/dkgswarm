@@ -266,9 +266,9 @@ export function annualizedYieldPct({ rewardWei, effectiveStakeWei, epochLengthSe
 }
 
 async function readChainYield() {
-  const { createPublicClient, http, encodeFunctionData, decodeFunctionResult } = await import(
-    "/usr/lib/node_modules/@origintrail-official/dkg/node_modules/viem/_esm/index.js"
-  );
+  // Host-provided or operator-installed viem; override with an absolute module path when needed.
+  const viemModule = process.env.TRAC_VIEM_MODULE || "viem";
+  const { createPublicClient, http, encodeFunctionData, decodeFunctionResult } = await import(viemModule);
   const rows = [];
   for (const chain of CHAINS) {
     const client = createPublicClient({ transport: http(chain.rpc, { timeout: 20000 }) });
