@@ -17,6 +17,7 @@ import { clientRegistrationHandler } from "@modelcontextprotocol/sdk/server/auth
 import { z } from "zod";
 import { createStore, grokClient, validateAuthorizationRequest } from "./oauth.mjs";
 import { createOAuthProvider } from "./oauth-provider.mjs";
+import { mcpCors } from "./mcp-cors.mjs";
 import { isWriterInvitationActive } from "./writer-invitations.mjs";
 import { OAuthError } from "@modelcontextprotocol/sdk/server/auth/errors.js";
 import { routeDraft, retryCollectivePushes } from "./curator-intake.mjs";
@@ -726,12 +727,15 @@ app.get("/api/swarm/memory", async (req, res) => {
   }
 });
 
+app.use("/mcp", mcpCors);
+
 app.use("/mcp", async (req, res, next) => {
   const header = req.headers.authorization || "";
   const got = header.startsWith("Bearer ") ? header.slice(7) : "";
-  const www = `Bearer error="invalid_token", resource_metadata="${resourceMetadataUrl}"`;
+  const resource = `resource_metadata="${resourceMetadataUrl}", scope="dkg:read"`;
   if (!got) {
-    res.set("WWW-Authenticate", www);
+    // No credentials: challenge without an error code, per RFC 6750 section 3.
+    res.set("WWW-Authenticate", `Bearer ${resource}`);
     res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Unauthorized" }, id: null });
     return;
   }
@@ -751,7 +755,7 @@ app.use("/mcp", async (req, res, next) => {
     });
     authStore.run(context, () => next());
   } catch {
-    res.set("WWW-Authenticate", www);
+    res.set("WWW-Authenticate", `Bearer error="invalid_token", ${resource}`);
     res.status(401).json({ jsonrpc: "2.0", error: { code: -32001, message: "Unauthorized" }, id: null });
   }
 });
@@ -772,6 +776,16 @@ app.post("/mcp", async (req, res) => {
       res.status(500).json({ jsonrpc: "2.0", error: { code: -32603, message: "Internal server error" }, id: null });
     }
   }
+});
+
+app.get("/mcp", (_req, res) => {
+  res.set("Allow", "POST");
+  res.status(405).json({ jsonrpc: "2.0", error: { code: -32000, message: "Method not allowed" }, id: null });
+});
+
+app.delete("/mcp", (_req, res) => {
+  res.set("Allow", "POST");
+  res.status(405).json({ jsonrpc: "2.0", error: { code: -32000, message: "Method not allowed" }, id: null });
 });
 
 let retryActive = false;

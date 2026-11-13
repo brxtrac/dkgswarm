@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { createStore, resolveRefreshScopes, validateAuthorizationRequest } from "../oauth.mjs";
+import { createStore, isRedirectAllowed, resolveRefreshScopes, validateAuthorizationRequest } from "../oauth.mjs";
 
 test("reader refresh cannot escalate to write", () => {
   assert.throws(
@@ -97,7 +97,7 @@ test("dynamic registration allows Muse callback host", () => {
   assert.equal(result.status, 0, result.stderr || result.stdout);
 });
 
-test("authorization requires reader-only PKCE request for exact resource", () => {
+test("authorization requires PKCE and accepts an omitted or canonical resource", () => {
   const valid = {
     client_id: "client",
     redirect_uri: "http://127.0.0.1/callback",
@@ -109,7 +109,31 @@ test("authorization requires reader-only PKCE request for exact resource", () =>
   };
   assert.equal(validateAuthorizationRequest(valid, valid.resource), null);
   assert.equal(validateAuthorizationRequest({ ...valid, scope: "dkg:read dkg:write" }, valid.resource), null);
+  assert.equal(validateAuthorizationRequest({ ...valid, scope: "dkg:read offline_access" }, valid.resource), null);
+  const { resource: _omitted, ...withoutResource } = valid;
+  assert.equal(validateAuthorizationRequest(withoutResource, valid.resource), null);
+  assert.equal(validateAuthorizationRequest({ ...valid, resource: "HTTPS://WWW.DKGSWARM.COM/mcp" }, valid.resource), null);
   assert.match(validateAuthorizationRequest({ ...valid, scope: "admin" }, valid.resource), /unsupported scope/);
   assert.match(validateAuthorizationRequest({ ...valid, code_challenge_method: "plain" }, valid.resource), /S256/);
   assert.match(validateAuthorizationRequest({ ...valid, resource: "https://example.com/mcp" }, valid.resource), /resource/);
+  assert.match(validateAuthorizationRequest({ ...valid, resource: "not a url" }, valid.resource), /absolute URI/);
+});
+
+test("default redirect allowlist includes current first-party MCP client callbacks", () => {
+  for (const url of [
+    "https://claude.ai/api/mcp/auth_callback",
+    "https://chatgpt.com/connector_platform_oauth_redirect",
+    "https://chatgpt.com/connector/oauth/abc123",
+    "https://www.cursor.com/agents/mcp/oauth/callback",
+    "https://x.ai/oauth/callback",
+  ]) {
+    assert.equal(isRedirectAllowed(url), true, url);
+  }
+  for (const url of [
+    "https://claude.ai.evil.example/callback",
+    "https://notchatgpt.com/callback",
+    "https://chatgpt.com.evil.example/callback",
+  ]) {
+    assert.equal(isRedirectAllowed(url), false, url);
+  }
 });

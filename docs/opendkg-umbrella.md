@@ -47,7 +47,7 @@ The following was checked directly on 2026-11-07 and rechecked where noted on 20
 | Runtime | Public MCP, collector service with retired webhook routes, site/game Express service, and local DKG node were active during read-only inspection. Host timers and collector polling remain operator-controlled. |
 | OpenDKG founder adoption | The public founder adoption record at [OpenDKG/.github Issue #3](https://github.com/OpenDKG/.github/issues/3) closed on 2026-11-05 after three founder acceptances of the same pinned v1.0 revision. This draft does not amend that record. |
 
-**Known source drift:** the inspected live site and deployed MCP source differ from the repository's `site/` and root files. The repository ships `policy-v18.json` as its example current policy, while the live pin was v19. The repository describes itself as inspectable source, not a complete server image. This drift must be resolved or explicitly accepted before anyone describes the repository as the production source of record. It does not require a runtime change for affiliation.
+**Source status (repo vs host):** canonical `main` is the reconciled source for the application files and now includes the deployment mapping in [`deployment.md`](deployment.md). The host still runs an older MCP copy and site snapshot; that is a deployment lag, not a second source of truth. The repository ships sample policy files, not the live pointer (`policy-current.json`) or live policy version. This document does not claim deployed parity; the deploy record must name the deployed SHA and any uncopied files.
 
 ## 3. Architecture
 
@@ -260,7 +260,7 @@ Now that the repository is OpenDKG-owned, the adopted Contributor Agreement cove
 
 ## 9. Blockers and owner questions
 
-1. **Source drift:** live site and deployed MCP source differ from repository files. Which copy is authoritative, and who reconciles it before the repository is described as the source of record?
+1. **Source deployment:** repository reconciliation is complete for the tracked application files; the host deployment lags canonical `main`. Follow [`deployment.md`](deployment.md), then record the deployed SHA. Remaining decision: when the operator approves a restart/copy window, and whether generated site previews are regenerated as part of it.
 2. **License:** resolved — the owner selected MIT and the root `LICENSE` and package metadata are aligned. Open; confirm notices for bundled third-party media and record the merged external contribution's provenance without claiming a retroactive assignment.
 3. **Target and review evidence:** resolved. `OpenDKG/dkgswarm` is the canonical repository; the §3 provenance and governance review is recorded in PR #3 and `THIRD_PARTY_NOTICES.md`; no separate council transfer vote is stated in the adopted text.
 4. **Affiliation vs transfer:** resolved. The owner chose and completed the repository transfer.
