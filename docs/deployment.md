@@ -1,8 +1,8 @@
 # Deployment and source mapping
 
 This repository is the canonical source for the application files listed below. It is not a
-complete production image: private environment, systemd units, proxy routing, OAuth/writer
-stores, databases, node modules, and generated assets stay on the host. See
+complete production image: private environment, installed systemd units, proxy routing,
+OAuth/writer stores, databases, node modules, and generated assets stay on the host. See
 [`source-coverage.md`](source-coverage.md) for the component-by-component boundary.
 
 Deployment is a manual, reviewed copy. Nothing here pulls, deploys, or restarts on its own.

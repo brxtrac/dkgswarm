@@ -40,7 +40,7 @@ uses them is above.
 | `policy-current.json` | Private pointer to the live policy digest; publishing it would mix a private pin with the public samples |
 | `node_modules/` | Reinstalled from the committed lockfiles |
 | Installed systemd units, proxy configuration, host paths | Host-specific; templates and a copy procedure are provided instead |
-| OriginTrail DKG node (`@origintrail-official/dkg` 10.0.23), its keystore, `auth.token`, node config and databases | Third-party runtime, not DKG Swarm source. Install from the upstream project; this repository only calls its HTTP API |
+| OriginTrail DKG node (`@origintrail-official/dkg` 10.0.23), its keystore, `auth.token`, node config and databases | Third-party runtime, not DKG Swarm source. Install from the upstream project at `https://github.com/OriginTrail/dkg`; this repository only calls its HTTP API |
 | `viem` | Optional host-provided dependency for the collector's on-chain APR path; no bundled install and no source copy |
 | `research-app/` | Website research and social-preview data generator. It feeds public site pages, is outside the MCP/collector runtime, and keeps private data. Excluded with the website scope; not a hidden dependency of the published services |
 | Generated social previews, research data, fonts, live roadmap | Generated website artifacts, reproducible from their generators, which are outside this change |

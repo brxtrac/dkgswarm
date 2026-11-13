@@ -71,7 +71,7 @@ Node.js with `node:sqlite` support required. In repo root run `npm ci && npm tes
 
 Use Node.js 22.13+ (or newer supported release). CI runs root and collector tests on Node.js 22 and 24. Public `query_graph` accepts a single triple-pattern `ASK` or `SELECT` with a fixed predicate, `LIMIT 1..100` for `SELECT`, and at most `OFFSET 10000`; per-installation and global concurrency budgets apply. Policy publication may safely retry after a confirmed partial share: exact matching graph content is verified before local pointer advances.
 
-This is inspectable application source, not complete server image: production proxy rules, systemd units, local DKG node, credentials, OAuth store, collector data, and operator records are excluded. `collector/` release copy reads `WATCH_X_PUBLIC_BEARER` from environment; no live credential shipped.
+This is inspectable application source, not complete server image: production proxy rules, installed systemd units, local DKG node, credentials, OAuth store, collector data, and operator records are excluded. `collector/` release copy reads `WATCH_X_PUBLIC_BEARER` from environment; no live credential shipped.
 
 ### OAuth interoperability
 
