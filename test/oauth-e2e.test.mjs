@@ -207,6 +207,15 @@ test("isolated server completes discovery, DCR, PKCE exchange, and MCP initializ
   assert.match(writeText, /Write denied/);
   assert.match(writeText, /"isError":true/);
 
+  const badToken = await fetch(`${publicUrl}/mcp`, {
+    method: "POST",
+    headers: { Authorization: "Bearer not-a-real-token", "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(badToken.status, 401);
+  assert.match(badToken.headers.get("www-authenticate"), /error="invalid_token"/);
+  assert.match(badToken.headers.get("www-authenticate"), /resource_metadata=/);
+
   const refresh = (fields) => fetch(`${publicUrl}/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -225,4 +234,10 @@ test("isolated server completes discovery, DCR, PKCE exchange, and MCP initializ
   const getMcp = await fetch(`${publicUrl}/mcp`, { headers: { Authorization: `Bearer ${tokens.access_token}` } });
   assert.equal(getMcp.status, 405);
   assert.equal(getMcp.headers.get("allow"), "POST");
+  const deleteMcp = await fetch(`${publicUrl}/mcp`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${tokens.access_token}` },
+  });
+  assert.equal(deleteMcp.status, 405);
+  assert.equal(deleteMcp.headers.get("allow"), "POST");
 });
