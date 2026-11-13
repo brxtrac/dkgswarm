@@ -46,6 +46,8 @@ export function findMissing(root = process.cwd()) {
           if (!fs.existsSync(fileURLToPath(specifier))) throw new Error('missing file');
         } else {
           // Resolve bare packages from the importing file, so per-service node_modules are checked.
+          // shortcut: createRequire covers current CJS/dual packages; add an import-only
+          // resolver here if a dependency ships only an "import" export condition.
           createRequire(file).resolve(specifier);
         }
       } catch {
