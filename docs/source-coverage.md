@@ -74,6 +74,15 @@ separate projects and are not DKG Swarm components.
 The live host was inspected read-only. No deployment, restart, policy publication, or graph
 write was performed while preparing this revision.
 
+## Residual trust notes
+
+- `/mcp` enforces the `DKG_MCP_CORS_ORIGINS` allowlist. The SDK `/register` and `/token`
+  handlers keep permissive CORS; they authenticate with client ID plus PKCE/body
+  credentials, not cookies, and open dynamic registration is intentional.
+- Dynamic registration trusts an allowlisted callback *host* not to expose an open redirect
+  on an arbitrary path. Exact registered URIs are still required; review a host before
+  adding it to `DKG_MCP_OAUTH_REDIRECT_HOSTS`. Loopback redirects follow RFC 8252.
+
 ## Reproduce the checks
 
 ```bash
@@ -85,5 +94,5 @@ node --check collector/watcher.mjs
 
 `test/oauth-e2e.test.mjs` starts the real server with temporary stores and an unreachable DKG
 API, then exercises discovery, dynamic registration, PKCE, token exchange, refresh, MCP
-`initialize`, `tools/list`, reader write refusal, origin rejection, and method handling. No
-production credential or account is used.
+`initialize` over raw HTTP and the SDK client transport, `tools/list`, reader write refusal,
+origin rejection, and method handling. No production credential or account is used.
