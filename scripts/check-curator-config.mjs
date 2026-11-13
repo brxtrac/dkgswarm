@@ -49,8 +49,10 @@ export function checkLayout({
   }
   if (!fs.existsSync(actual)) throw new Error(`agent policy does not exist: ${actual}`);
   const systemPolicy = path.join(systemRoot, 'agents', `${agentName}.md`);
-  if (fs.existsSync(systemPolicy)) {
-    throw new Error(`system agent overrides the configured policy: ${systemPolicy}`);
+  const systemConfig = [path.join(systemRoot, 'opencode.json'), path.join(systemRoot, 'opencode.jsonc')]
+    .filter((candidate) => fs.existsSync(candidate));
+  if (fs.existsSync(systemPolicy) || systemConfig.length) {
+    throw new Error(`system configuration can override the selected agent: ${[systemPolicy, ...systemConfig].filter((item) => fs.existsSync(item)).join(', ')}`);
   }
   const overrides = projectOverrides(cwd, agentName);
   if (overrides.length) {

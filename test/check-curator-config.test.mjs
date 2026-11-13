@@ -45,7 +45,7 @@ test('checks the policy path OpenCode discovers and resolves the agent without a
     const systemRoot = path.join(root, 'system');
     mkdirSync(path.join(systemRoot, 'agents'), { recursive: true });
     writeFileSync(path.join(systemRoot, 'agents', 'trac-marketing-curator.md'), 'system override\n');
-    assert.throws(() => checkLayout({ env, systemRoot }), /system agent overrides/);
+    assert.throws(() => checkLayout({ env, systemRoot }), /system configuration can override/);
     rmSync(systemRoot, { recursive: true, force: true });
 
     mkdirSync(path.join(drafts, '.opencode', 'agents'), { recursive: true });
