@@ -4,8 +4,9 @@ This repository publishes the non-website application source for DKG Swarm: the 
 connector, OAuth authorization server, writer-invitation and policy tooling, collector and
 curator, scheduled curator, their tests, and deployment examples. "All source" here means
 every owned runtime component of those services, not every file on an operator host and not
-the marketing website build. The only owned non-website source kept out of this revision is
-the separately reviewed, default-off scout branch described below.
+the marketing website build. The only owned application source kept out of this revision is
+the separately reviewed, default-off scout branch described below; the website, research,
+game, and private-state surfaces are listed explicitly under exclusions.
 
 Checked on 2026-11-13 against canonical `main` and the live host. Private state is
 deliberately excluded; code that reads or writes that state is included so the behavior can
