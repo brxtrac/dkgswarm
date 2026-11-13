@@ -51,8 +51,10 @@ in this throwaway worktree; these installs are for review only and are not the r
 
 ```bash
 git -C "$RELEASE" rev-parse HEAD
-(cd "$RELEASE" && npm ci && npm test)
-(cd "$RELEASE/collector" && npm ci && npm test)
+(cd "$RELEASE" && npm ci)
+(cd "$RELEASE/collector" && npm ci)
+(cd "$RELEASE" && npm test)
+(cd "$RELEASE/collector" && npm test)
 node "$RELEASE/scripts/check-imports.mjs" "$RELEASE"
 ```
 
