@@ -125,7 +125,7 @@ the registry, stop before restart and fix the cache/network; do not start a serv
 missing dependencies.
 
 The collector's on-chain APR path imports `viem`. Set `TRAC_VIEM_MODULE` to an existing
-module entry point already present on the host, or add `viem` through the normal reviewed
+package or file path already present on the host, or add `viem` through the normal reviewed
 collector dependency change (package metadata and lockfile). A manual `npm install` in the
 runtime root is removed by the next `npm ci`. If neither is provided, that APR read fails
 while the rest of the collector continues to run.
